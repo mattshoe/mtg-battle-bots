@@ -194,8 +194,8 @@ class SdkSeat(Seat):
             # A session that will not close cleanly is not worth failing a
             # finished match over. The loop stops either way.
             with contextlib.suppress(Exception):
-                asyncio.run_coroutine_threadsafe(
-                    client.__aexit__(None, None, None), loop
-                ).result(timeout=15)
+                asyncio.run_coroutine_threadsafe(client.__aexit__(None, None, None), loop).result(
+                    timeout=15
+                )
         if loop is not None:
             loop.call_soon_threadsafe(loop.stop)

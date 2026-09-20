@@ -297,9 +297,7 @@ def test_an_unreadable_line_is_recorded_and_drops_the_connection(harness: Harnes
     conn = sqlite3.connect(harness.db_path)
     conn.row_factory = sqlite3.Row
     try:
-        events = conn.execute(
-            "SELECT * FROM events WHERE match_id = ?", (MATCH_ID,)
-        ).fetchall()
+        events = conn.execute("SELECT * FROM events WHERE match_id = ?", (MATCH_ID,)).fetchall()
     finally:
         conn.close()
 

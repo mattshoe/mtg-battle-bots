@@ -1,0 +1,31 @@
+name: ci
+
+# Forge is a 300 MB download and the bridge needs a JVM, so CI covers the Python
+# harness only. The Java side is verified by building it locally, which
+# java/build.sh does in a couple of seconds against the pinned jar.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Lint
+        run: uv run --python 3.12 --with ruff ruff check src/ tests/
+
+      - name: Format check
+        run: uv run --python 3.12 --with ruff ruff format --check src/ tests/
+
+      - name: Tests
+        # The collection database is not present on a runner, so the tests that
+        # need it skip themselves. Everything else runs.
+        run: uv run --python 3.12 --with pytest python -m pytest -q

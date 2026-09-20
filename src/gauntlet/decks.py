@@ -49,6 +49,7 @@ def _default_db_dir() -> Path | None:
                 return candidate
     return None
 
+
 # Singleton rules exempt these, so more than one copy is not a deckbuilding error.
 BASIC_LANDS = frozenset(
     {

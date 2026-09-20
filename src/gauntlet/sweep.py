@@ -212,9 +212,7 @@ def format_table(deck: str, results: list[Pairing], elapsed: float) -> str:
             lines.append(f"{p.opponent:<{width}}  {'error':>9}  {p.error[:40]}")
             continue
         record = f"{p.wins}-{p.losses}-{p.draws}"
-        lines.append(
-            f"{p.opponent:<{width}}  {record:>9}  {p.win_rate:>5.0%}  {p.median_turns:>5}"
-        )
+        lines.append(f"{p.opponent:<{width}}  {record:>9}  {p.win_rate:>5.0%}  {p.median_turns:>5}")
 
     overall = wins / decisive if decisive else 0.0
     lines += ["", f"overall {wins}-{losses}-{draws}, {overall:.0%} of decisive games"]

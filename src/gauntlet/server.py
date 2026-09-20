@@ -354,9 +354,7 @@ class MatchServer:
         if request.kind == "game_result":
             self.record_game_result(payload)
         else:
-            self.transcript.record_event(
-                match_id=self.match_id, kind=request.kind, payload=payload
-            )
+            self.transcript.record_event(match_id=self.match_id, kind=request.kind, payload=payload)
 
     # ------------------------------------------------------- control side
 

@@ -126,9 +126,7 @@ def render_state(state: dict[str, Any], cards: dict[str, Any]) -> str:
             line = f"  {name}{pt} attacking {target}" if target else f"  {name}{pt} attacking"
             blockers = entry.get("blocked_by") or []
             if blockers:
-                named = ", ".join(
-                    (cards.get(b) or {}).get("name", b) for b in blockers
-                )
+                named = ", ".join((cards.get(b) or {}).get("name", b) for b in blockers)
                 line += f", blocked by {named}"
             lines.append(line)
 

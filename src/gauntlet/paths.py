@@ -44,9 +44,7 @@ def vendor_dir() -> Path:
 def forge_jar() -> Path:
     jars = sorted(vendor_dir().glob("forge-gui-desktop-*-jar-with-dependencies.jar"))
     if not jars:
-        raise FileNotFoundError(
-            f"no Forge jar under {vendor_dir()} - run scripts/fetch-forge.sh"
-        )
+        raise FileNotFoundError(f"no Forge jar under {vendor_dir()} - run scripts/fetch-forge.sh")
     return jars[-1]
 
 

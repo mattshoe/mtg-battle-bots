@@ -308,9 +308,7 @@ def build_seat(kind: str, **kwargs) -> Seat:
 
             return SdkSeat(**kwargs)
         case _:
-            raise ValueError(
-                f"unknown seat kind {kind!r}, expected forge, interactive, api or sdk"
-            )
+            raise ValueError(f"unknown seat kind {kind!r}, expected forge, interactive, api or sdk")
 
 
 __all__ = [
