@@ -297,7 +297,15 @@ public class PlayerControllerGauntlet extends PlayerControllerAi {
         Game game = getGame();
         StringBuilder sb = new StringBuilder();
         sb.append(game.getPhaseHandler().getTurn()).append('|');
-        sb.append(game.getPhaseHandler().getPhase()).append('|');
+        // Phase is deliberately not part of this. Forge offers priority in every
+        // step, so including it asked the seat the same question six times a
+        // turn - upkeep, draw, main, three combat steps - with an identical
+        // board and identical options each time. That was most of a 224
+        // decision game.
+        //
+        // Leaving it out is safe because sorcery-speed plays only appear in the
+        // option list during a main phase, so arriving at one changes the
+        // options and the seat gets asked again on its own.
         sb.append(game.getPhaseHandler().getPlayerTurn()).append('|');
         sb.append(game.getStack().size()).append('|');
         for (Player p : game.getPlayers()) {

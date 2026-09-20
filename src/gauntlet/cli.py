@@ -96,8 +96,8 @@ def export_deck(
 def run_match(
     a: Annotated[str, typer.Option("--a", help="Seat A deck: slug, name, or file.")],
     b: Annotated[str, typer.Option("--b", help="Seat B deck.")],
-    seat_a: Annotated[str, typer.Option(help="forge, api, or interactive.")] = "interactive",
-    seat_b: Annotated[str, typer.Option(help="forge, api, or interactive.")] = "interactive",
+    seat_a: Annotated[str, typer.Option(help="forge, sdk, api, or interactive.")] = "interactive",
+    seat_b: Annotated[str, typer.Option(help="forge, sdk, api, or interactive.")] = "interactive",
     games: Annotated[int, typer.Option(help="Games to play.")] = 1,
     seed: Annotated[int | None, typer.Option(help="RNG seed, for a reproducible game.")] = None,
     game_format: Annotated[str, typer.Option("--format", help="Forge game type.")] = "Commander",
@@ -323,13 +323,16 @@ def sweep_cmd(
     owner: Annotated[str | None, typer.Option(help="Collection owner.")] = None,
     game_format: Annotated[str, typer.Option("--format")] = "Commander",
     game_timeout: Annotated[int, typer.Option(help="Seconds before a draw is called.")] = 900,
+    seat_a: Annotated[str, typer.Option(help="Who plays the deck under test.")] = "forge",
+    seat_b: Annotated[str, typer.Option(help="Who plays each opponent.")] = "forge",
+    decision_timeout: Annotated[int, typer.Option(help="Seconds a seat may think.")] = 300,
     as_json: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
     """Play one deck against a field of opponents and report win rates.
 
-    Forge AI on both sides. A sweep is for volume, and agent judgment at this
-    scale costs more than the answer is worth. Use it to find the matchup worth
-    reading closely, then play that one interactively.
+    Forge AI on both sides by default, which is fast and free. Pass
+    `--seat-a sdk --seat-b sdk` to have agents play instead, which is far better
+    Magic and roughly a hundred times slower.
     """
     if against.strip().lower() == "all":
         try:
@@ -366,6 +369,9 @@ def sweep_cmd(
         owner=owner,
         game_format=game_format,
         game_timeout=game_timeout,
+        seat_deck=seat_a,
+        seat_opponent=seat_b,
+        decision_timeout=decision_timeout,
         on_done=progress,
     )
 

@@ -54,12 +54,18 @@ class Pairing:
         return ordered[len(ordered) // 2]
 
 
-def default_workers() -> int:
-    """Half the cores, at least one, at most six.
+def default_workers(agent_seats: int = 0) -> int:
+    """How many pairings to run at once.
 
-    Each worker is a JVM holding the whole card database, so memory is the
-    binding constraint rather than CPU. Six of them is already several gigabytes.
+    With Forge on both sides the limit is memory: each worker is a JVM holding
+    the whole card database, and six of those is already several gigabytes.
+
+    With agent seats the limit is upstream instead. Every bridged seat holds a
+    live model session, so six workers against two agent seats is twelve
+    concurrent sessions, which is where rate limiting starts. Back off.
     """
+    if agent_seats:
+        return max(1, min(4, 8 // max(1, agent_seats)))
     return max(1, min(6, (os.cpu_count() or 2) // 2))
 
 
@@ -71,6 +77,7 @@ def run_pairing(
     game_format: str = "Commander",
     owner: str | None = None,
     game_timeout: int = 900,
+    decision_timeout: int = 300,
     transcript: Transcript | None = None,
 ) -> Pairing:
     """Play one pairing to completion and fill in its results.
@@ -89,6 +96,7 @@ def run_pairing(
             seed=pairing.seed,
             games=pairing.games,
             game_timeout=game_timeout,
+            decision_timeout=decision_timeout,
         )
         result = matchmod.run(planned, transcript=transcript)
     except Exception as exc:
@@ -119,6 +127,9 @@ def run_sweep(
     owner: str | None = None,
     game_format: str = "Commander",
     game_timeout: int = 900,
+    seat_deck: str = "forge",
+    seat_opponent: str = "forge",
+    decision_timeout: int = 300,
     on_done=None,
 ) -> list[Pairing]:
     """Play a deck against every opponent, in parallel."""
@@ -131,7 +142,8 @@ def run_sweep(
         for opp in opponents
     ]
 
-    workers = workers or default_workers()
+    agent_seats = sum(1 for k in (seat_deck, seat_opponent) if k in ("sdk", "api"))
+    workers = workers or default_workers(agent_seats)
     done: list[Pairing] = []
 
     # One transcript per worker thread is tempting but wrong. The Transcript is
@@ -147,6 +159,9 @@ def run_sweep(
                     owner=owner,
                     game_format=game_format,
                     game_timeout=game_timeout,
+                    seat_deck=seat_deck,
+                    seat_opponent=seat_opponent,
+                    decision_timeout=decision_timeout,
                     transcript=transcript,
                 ): p
                 for p in pairings

@@ -154,7 +154,7 @@ def build_seats(plan_: MatchPlan) -> dict[str, Seat]:
         if spec.controller == "forge":
             continue  # played inside the JVM, never reaches a Python seat
         options = dict(spec.options)
-        if spec.controller == "api":
+        if spec.controller in ("api", "sdk"):
             options.setdefault("deck_note", plan_.decklists[spec.seat].name)
         seats[spec.seat] = build_seat(spec.controller, **options)
     return seats

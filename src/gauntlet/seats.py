@@ -292,8 +292,16 @@ def build_seat(kind: str, **kwargs) -> Seat:
             return InteractiveSeat()
         case "api":
             return ApiSeat(**kwargs)
+        case "sdk":
+            # Imported here because it pulls in the Agent SDK, which most runs
+            # do not need and which is a large dependency.
+            from .sdk_seat import SdkSeat
+
+            return SdkSeat(**kwargs)
         case _:
-            raise ValueError(f"unknown seat kind {kind!r}, expected forge, interactive or api")
+            raise ValueError(
+                f"unknown seat kind {kind!r}, expected forge, interactive, api or sdk"
+            )
 
 
 __all__ = [
