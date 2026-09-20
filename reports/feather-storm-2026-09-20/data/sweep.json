@@ -1,0 +1,236 @@
+{
+ "deck": "feather-storm",
+ "elapsed_s": 675.6,
+ "pairings": [
+  {
+   "opponent": "chaos-incarnate-precon",
+   "wins": 16,
+   "losses": 4,
+   "draws": 0,
+   "win_rate": 0.8,
+   "median_turns": 20,
+   "match": "0920-0051-004e",
+   "error": ""
+  },
+  {
+   "opponent": "quandrix-unlimited-precon",
+   "wins": 15,
+   "losses": 5,
+   "draws": 0,
+   "win_rate": 0.75,
+   "median_turns": 17,
+   "match": "0920-0057-5456",
+   "error": ""
+  },
+  {
+   "opponent": "blood-rites-precon",
+   "wins": 14,
+   "losses": 6,
+   "draws": 0,
+   "win_rate": 0.7,
+   "median_turns": 18,
+   "match": "0920-0051-a5f5",
+   "error": ""
+  },
+  {
+   "opponent": "counter-intelligence-precon",
+   "wins": 14,
+   "losses": 6,
+   "draws": 0,
+   "win_rate": 0.7,
+   "median_turns": 19,
+   "match": "0920-0053-7bce",
+   "error": ""
+  },
+  {
+   "opponent": "squirreled-away-precon",
+   "wins": 14,
+   "losses": 6,
+   "draws": 0,
+   "win_rate": 0.7,
+   "median_turns": 19,
+   "match": "0920-0058-d14a",
+   "error": ""
+  },
+  {
+   "opponent": "counter-blitz-precon",
+   "wins": 13,
+   "losses": 7,
+   "draws": 0,
+   "win_rate": 0.65,
+   "median_turns": 20,
+   "match": "0920-0053-4d57",
+   "error": ""
+  },
+  {
+   "opponent": "family-matters-precon",
+   "wins": 13,
+   "losses": 7,
+   "draws": 0,
+   "win_rate": 0.65,
+   "median_turns": 18,
+   "match": "0920-0055-fe16",
+   "error": ""
+  },
+  {
+   "opponent": "abzan-armor-precon",
+   "wins": 12,
+   "losses": 8,
+   "draws": 0,
+   "win_rate": 0.6,
+   "median_turns": 18,
+   "match": "0920-0051-bfbb",
+   "error": ""
+  },
+  {
+   "opponent": "blight-curse-precon",
+   "wins": 12,
+   "losses": 8,
+   "draws": 0,
+   "win_rate": 0.6,
+   "median_turns": 22,
+   "match": "0920-0051-9268",
+   "error": ""
+  },
+  {
+   "opponent": "elven-council-precon",
+   "wins": 12,
+   "losses": 8,
+   "draws": 0,
+   "win_rate": 0.6,
+   "median_turns": 18,
+   "match": "0920-0053-324c",
+   "error": ""
+  },
+  {
+   "opponent": "planeswalker-party-precon",
+   "wins": 12,
+   "losses": 8,
+   "draws": 0,
+   "win_rate": 0.6,
+   "median_turns": 21,
+   "match": "0920-0056-2237",
+   "error": ""
+  },
+  {
+   "opponent": "grave-danger-precon",
+   "wins": 11,
+   "losses": 9,
+   "draws": 0,
+   "win_rate": 0.55,
+   "median_turns": 17,
+   "match": "0920-0055-ab39",
+   "error": ""
+  },
+  {
+   "opponent": "jeskai-striker-precon",
+   "wins": 11,
+   "losses": 9,
+   "draws": 0,
+   "win_rate": 0.55,
+   "median_turns": 21,
+   "match": "0920-0055-8f95",
+   "error": ""
+  },
+  {
+   "opponent": "animated-army-precon",
+   "wins": 10,
+   "losses": 10,
+   "draws": 0,
+   "win_rate": 0.5,
+   "median_turns": 17,
+   "match": "0920-0051-4f49",
+   "error": ""
+  },
+  {
+   "opponent": "halo-proxy-astor-equipment",
+   "wins": 10,
+   "losses": 10,
+   "draws": 0,
+   "win_rate": 0.5,
+   "median_turns": 18,
+   "match": "0920-0055-871f",
+   "error": ""
+  },
+  {
+   "opponent": "silverquill-influence-precon",
+   "wins": 10,
+   "losses": 10,
+   "draws": 0,
+   "win_rate": 0.5,
+   "median_turns": 18,
+   "match": "0920-0058-7b2a",
+   "error": ""
+  },
+  {
+   "opponent": "sneak-attack-precon",
+   "wins": 10,
+   "losses": 10,
+   "draws": 0,
+   "win_rate": 0.5,
+   "median_turns": 19,
+   "match": "0920-0058-8bbc",
+   "error": ""
+  },
+  {
+   "opponent": "eternal-might-precon",
+   "wins": 8,
+   "losses": 12,
+   "draws": 0,
+   "win_rate": 0.4,
+   "median_turns": 18,
+   "match": "0920-0053-c8ba",
+   "error": ""
+  },
+  {
+   "opponent": "world-shaper-precon",
+   "wins": 8,
+   "losses": 12,
+   "draws": 0,
+   "win_rate": 0.4,
+   "median_turns": 20,
+   "match": "0920-0101-4990",
+   "error": ""
+  },
+  {
+   "opponent": "temur-roar-precon",
+   "wins": 7,
+   "losses": 13,
+   "draws": 0,
+   "win_rate": 0.35,
+   "median_turns": 17,
+   "match": "0920-0100-517f",
+   "error": ""
+  },
+  {
+   "opponent": "lorehold-spirit-precon",
+   "wins": 6,
+   "losses": 14,
+   "draws": 0,
+   "win_rate": 0.3,
+   "median_turns": 18,
+   "match": "0920-0056-48ba",
+   "error": ""
+  },
+  {
+   "opponent": "sultai-arisen-precon",
+   "wins": 5,
+   "losses": 15,
+   "draws": 0,
+   "win_rate": 0.25,
+   "median_turns": 18,
+   "match": "0920-0059-95d5",
+   "error": ""
+  },
+  {
+   "opponent": "veloci-ramp-tor-precon",
+   "wins": 4,
+   "losses": 16,
+   "draws": 0,
+   "win_rate": 0.2,
+   "median_turns": 18,
+   "match": "0920-0100-bada",
+   "error": ""
+  }
+ ]
+}

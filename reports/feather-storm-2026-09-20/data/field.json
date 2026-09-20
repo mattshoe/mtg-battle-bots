@@ -1,0 +1,232 @@
+[
+ {
+  "slug": "chaos-incarnate-precon",
+  "name": "Chaos Incarnate \u2014 Starter Commander Deck Precon",
+  "commander": "Kardur, Doomscourge (single commander \u2014 Starter decks have no alt commander)",
+  "bracket": "1-2 (Starter line is the simplest, most budget precon product)",
+  "colors": "Rakdos (Black/Red)",
+  "theme": "Goad + chaos \u2014 Kardur forces opponents' creatures to attack each other, drains life when attacking creatures die; symmetrical damage/pain payoffs (Dictate of the Twin Gods, Spiteful Visions, Stormfist Crusader) and big demons finish",
+  "status": "Stock precon, unmodified",
+  "card_count": 100
+ },
+ {
+  "slug": "elven-council-precon",
+  "name": "Elven Council \u2014 LOTR: Tales of Middle-earth Commander Precon",
+  "commander": "Galadriel, Elven-Queen (deck supports 5 other viable commanders in the 99: Gandalf Westward Voyager, C\u00edrdan, Elrond, Erestor, Radagast)",
+  "bracket": "1-2 (0 Game Changers, no infinite combos out of the box)",
+  "colors": "Simic (Green/Blue)",
+  "theme": "Elf typal + voting/politics (\"will of the council\" mechanics), with a big-creature subtheme",
+  "status": "Stock precon, unmodified",
+  "card_count": 100
+ },
+ {
+  "slug": "grave-danger-precon",
+  "name": "Grave Danger \u2014 Starter Commander Deck Precon",
+  "commander": "Gisa and Geralf (single commander \u2014 Starter decks have no alt commander)",
+  "bracket": "1-2 (Starter line is the simplest, most budget precon product)",
+  "colors": "Dimir (Blue/Black)",
+  "theme": "Zombie typal + graveyard recursion \u2014 fill the graveyard, recast Zombies from it with Gisa and Geralf, swarm with Zombie tokens and drain payoffs (Gray Merchant, Diregraf Captain, Vengeful Dead)",
+  "status": "Stock precon, unmodified",
+  "card_count": 100
+ },
+ {
+  "slug": "halo-proxy-astor-equipment",
+  "name": "Halo Proxy Deck (\"Master Chief, Spartan Hero\") \u2014 Custom Boros Equipment/Vehicles",
+  "commander": "Astor, Bearer of Blades (proxied as \"Master Chief, Spartan Hero\")",
+  "bracket": "3 (verified: 2 Game Changers \u2014 Ancient Tomb, Farewell \u2014 within the \u22643 limit)",
+  "colors": "Boros (Red/White)",
+  "theme": "Equipment + Vehicles \u2014 Astor digs for gear, equips for {1}, and lets creatures crew Vehicles cheaply; voltron beats and go-wide Equipment payoffs",
+  "status": "Custom proxy deck, purchased from Etsy seller (Halo full-art reskins of real cards). NOT legal for sanctioned play; requires playgroup/rule-0 approval.",
+  "card_count": 100
+ },
+ {
+  "slug": "temur-roar-precon",
+  "name": "Temur Roar \u2014 Tarkir: Dragonstorm Commander Precon",
+  "commander": "Ureni of the Unwritten (featured alt commander in the 99: Eshki, Temur's Roar)",
+  "bracket": "2",
+  "colors": "Temur (Green/Blue/Red)",
+  "theme": "Dragon typal \u2014 ramp into big Dragons, cheat them into play (Dragonstorm cards manifest/reveal Dragons from the library), haste + attack payoffs (Dragon Tempest, Temur Ascendancy, Xenagos-style damage)",
+  "status": "Stock precon, unmodified",
+  "card_count": 100
+ },
+ {
+  "slug": "veloci-ramp-tor-precon",
+  "name": "Veloci-Ramp-Tor \u2014 The Lost Caverns of Ixalan Commander Precon",
+  "commander": "Pantlaza, Sun-Favored (alt commander in the 99: Wayta, Trainer Prodigy)",
+  "bracket": "2",
+  "colors": "Naya (Red/Green/White)",
+  "theme": "Dinosaur typal + big-mana ramp \u2014 accelerate mana early, cast huge Dinosaurs, Pantlaza's discover ability chains more Dinosaurs onto the battlefield; minor enrage (fight/damage-matters) subtheme",
+  "status": "Stock precon, unmodified",
+  "card_count": 100
+ },
+ {
+  "slug": "jeskai-striker-precon",
+  "name": "Jeskai Striker (Tarkir) \u2014 Tarkir: Dragonstorm Commander Precon",
+  "commander": "Shiko and Narset, Unified (featured alt commander: Elsha, Threefold Master)",
+  "bracket": "2 (0 Game Changers, no stock infinite combos)",
+  "colors": "Jeskai (Blue/Red/White)",
+  "theme": "Spellslinger \u2014 cast multiple spells per turn to trigger \"flurry\" (second spell each turn) effects; Shiko copies that second spell if it targets, or draws a card. Token swarms (Monastery Mentor, Third Path Iconoclast, Young Pyromancer) and cost reduction/ritual mana (Storm-Kiln Artist, Mana Geyser, Goblin Electromancer) fuel the chain.",
+  "status": "Stock precon, unmodified",
+  "card_count": 100
+ },
+ {
+  "slug": "counter-intelligence-precon",
+  "name": "Counter Intelligence \u2014 Edge of Eternities Commander Precon",
+  "commander": "Kilo, Apogee Mind (featured alt commander: Inspirit, Flagship Vessel)",
+  "bracket": "2 (0 Game Changers)",
+  "colors": "Jeskai (Blue/Red/White)",
+  "theme": "Artifacts + counters \u2014 proliferate charge/+1/+1/indestructible counters across an artifact-heavy board; Darksteel Reactor as a build-around alt win-con, Hangarback Walker/Steel Overseer/Crystalline Crawler as counter payoffs",
+  "status": "Stock precon, unmodified",
+  "card_count": 100
+ },
+ {
+  "slug": "lorehold-spirit-precon",
+  "name": "Lorehold Spirit \u2014 Secrets of Strixhaven Commander Precon",
+  "commander": "Quintorius, History Chaser (featured alt commander: Excava, the Risen Past)",
+  "bracket": "2 (0 Game Changers)",
+  "colors": "Boros (Red/White)",
+  "theme": "Spirits + graveyard recursion \u2014 buff a growing Spirit token army while replaying spells/creatures out of the graveyard (Sevinne's Reclamation, Karmic Guide, Faithless Looting)",
+  "status": "Stock precon, unmodified",
+  "card_count": 100
+ },
+ {
+  "slug": "quandrix-unlimited-precon",
+  "name": "Quandrix Unlimited \u2014 Secrets of Strixhaven Commander Precon",
+  "commander": "Zimone, Infinite Analyst (featured alt commander: Primo, the Unbounded)",
+  "bracket": "2 (0 Game Changers)",
+  "colors": "Simic (Green/Blue)",
+  "theme": "+1/+1 counters + expanding X-spells \u2014 grow Hydras and counter-matters creatures (Forgotten Ancient, Ozolith, Hardened Scales) while ramping into huge X-spell payoffs (Stroke of Genius, Hydroid Krasis, Eureka Moment)",
+  "status": "Stock precon, unmodified",
+  "card_count": 100
+ },
+ {
+  "slug": "squirreled-away-precon",
+  "name": "Squirreled Away (Squirrels) \u2014 Bloomburrow Commander Precon",
+  "commander": "Hazel of the Rootbloom (featured alt commander: The Odd Acorn Gang)",
+  "bracket": "2 (0 Game Changers)",
+  "colors": "Golgari (Black/Green)",
+  "theme": "Squirrel tokens + sacrifice/aristocrats \u2014 flood the board with Squirrel tokens (Chatterfang, Squirrel Nest, Chatterstorm, Scurry of Squirrels), then convert them into drain and card draw via sacrifice payoffs (Zulaport Cutthroat, Bastion of Remembrance, Nadier's Nightblade, Ravenous Squirrel, Skullclamp)",
+  "status": "Stock precon, unmodified",
+  "card_count": 100
+ },
+ {
+  "slug": "animated-army-precon",
+  "name": "Animated Army \u2014 Bloomburrow Commander Precon",
+  "commander": "Bello, Bard of the Brambles (featured alt commander: Wildsear, Scouring Maw)",
+  "bracket": "2 (0 Game Changers)",
+  "colors": "Gruul (Red/Green)",
+  "theme": "Permanents-matter \u2014 Bello turns big non-Equipment artifacts and non-Aura enchantments (mana value 4+) into indestructible 4/4 Elemental creatures with haste that draw a card on combat damage; ramp package (Farseek, Cultivate, Explore) into a wide, hard-to-remove board",
+  "status": "Stock precon, unmodified",
+  "card_count": 100
+ },
+ {
+  "slug": "blood-rites-precon",
+  "name": "Blood Rites \u2014 The Lost Caverns of Ixalan Commander Precon",
+  "commander": "Clavile\u00f1o, First of the Blessed (featured alt commander: Carmen, Cruel Skymarcher)",
+  "bracket": "2 (0 Game Changers)",
+  "colors": "Orzhov (White/Black)",
+  "theme": "Vampire aristocrats \u2014 swarm with Vampire tokens and creatures, attack to trigger Clavile\u00f1o's curse (turns attacking creatures into more powerful Demons), then sacrifice for value with Blood Artist/Cruel Celebrant/Indulgent Aristocrat-style drain payoffs; lifegain and sacrifice-for-value throughout",
+  "status": "Stock precon, unmodified",
+  "card_count": 100
+ },
+ {
+  "slug": "eternal-might-precon",
+  "name": "Eternal Might \u2014 Aetherdrift Commander Precon",
+  "commander": "Temmet, Naktamun's Will (featured alt commander: Hashaton, Scarab's Fist)",
+  "bracket": "2 (0 Game Changers)",
+  "colors": "Esper (White/Blue/Black)",
+  "theme": "Zombies + card draw/discard engine \u2014 Temmet draws and discards on attack, and gives your Zombies +1/+1 until end of turn whenever you draw a card (triggering twice on an attack turn); embalm/eternalize graveyard recursion (Timeless Dragon, Champion of Wits, God-Eternal Oketra) adds resilience",
+  "status": "Stock precon, unmodified",
+  "card_count": 100
+ },
+ {
+  "slug": "family-matters-precon",
+  "name": "Family Matters \u2014 Bloomburrow Commander Precon",
+  "commander": "Zinnia, Valley's Voice (featured alt commander: Arthur, Marigold Knight)",
+  "bracket": "2 (0 Game Changers)",
+  "colors": "Jeskai (Blue/Red/White)",
+  "theme": "Mice typal / small creatures \u2014 flood the board with cheap creatures, then draw extra cards off ones with low power via Zinnia; \"offspring\" token-copy mechanic supports going wide",
+  "status": "Stock precon, unmodified",
+  "card_count": 100
+ },
+ {
+  "slug": "silverquill-influence-precon",
+  "name": "Silverquill Influence \u2014 Secrets of Strixhaven Commander Precon",
+  "commander": "Killian, Decisive Mentor (featured alt commander: Scriv, the Obligator)",
+  "bracket": "2 (0 Game Changers)",
+  "colors": "Orzhov (White/Black)",
+  "theme": "Auras + goad \u2014 every enchantment you cast goads an opponent's creature (forcing bad attacks), while Auras attached to your creatures reward you with card draw when those creatures attack; grindy, buys time to get into position",
+  "status": "Stock precon, unmodified",
+  "card_count": 100
+ },
+ {
+  "slug": "sneak-attack-precon",
+  "name": "Sneak Attack \u2014 Zendikar Rising Commander Precon",
+  "commander": "Anowon, the Ruin Thief",
+  "bracket": "3 (1 Game Changer \u2014 Notion Thief)",
+  "colors": "Dimir (Blue/Black)",
+  "theme": "Rogue typal + mill \u2014 attack with unblockable/evasive Rogues, mill opponents on combat damage via Anowon, then punish milled creature cards by drawing extra cards; reanimation package (Fated Return, Rise from the Grave, Necromantic Selection) recurs milled threats",
+  "status": "Stock precon, unmodified",
+  "card_count": 100
+ },
+ {
+  "slug": "sultai-arisen-precon",
+  "name": "Sultai Arisen (Tarkir) \u2014 Tarkir: Dragonstorm Commander Precon",
+  "commander": "Teval, the Balanced Scale (featured alt commander: Kotis, Sibsig Champion)",
+  "bracket": "2 (0 Game Changers)",
+  "colors": "Sultai (Black/Green/Blue)",
+  "theme": "Graveyard value engine \u2014 self-mill fills the yard, then every card that leaves the graveyard (recursion, casting from it, etc.) generates value: Teval mills on attack and returns lands, and cards leaving the graveyard make 2/2 Zombie Druid tokens; Kotis lets you cast a creature from the graveyard once per turn and grows off graveyard-sourced creatures entering",
+  "status": "Stock precon, unmodified",
+  "card_count": 100
+ },
+ {
+  "slug": "abzan-armor-precon",
+  "name": "Abzan Armor (Tarkir) \u2014 Tarkir: Dragonstorm Commander Precon",
+  "commander": "Felothar the Steadfast (featured alt commander: Betor, Ancestor's Voice)",
+  "bracket": "3 (1 Game Changer: Seedborn Muse)",
+  "colors": "Abzan (White/Black/Green)",
+  "theme": "Toughness-matters defenders \u2014 Felothar makes every creature you control deal combat damage equal to its toughness and lets walls attack through defender, so fat-butt blockers (Towering Titan, Indomitable Ancients, Tree of Redemption, Wall of Limbs, Weathered Sentinels) become the offense; Assault Formation is a redundant copy of that effect. Axebane Guardian and Overgrown Battlement ramp off the same defenders. Betor turns the lifegain half (Rhox Faithmender, Wall of Reverence, Indulging Patrician) into +1/+1 counters and reanimates on the life-loss half. Felothar also sacs a big-toughness creature to draw cards equal to its toughness, which is nearly free on 0-power walls.",
+  "status": "Stock precon, unmodified",
+  "card_count": 100
+ },
+ {
+  "slug": "blight-curse-precon",
+  "name": "Blight Curse \u2014 Lorwyn Eclipsed Commander Precon",
+  "commander": "Auntie Ool, Cursewretch (featured alt commander: The Reaper, King No More)",
+  "bracket": "2 (0 Game Changers)",
+  "colors": "Jund (Black/Red/Green)",
+  "theme": "-1/-1 counters + blight mechanic \u2014 shrink and kill opponents' creatures with -1/-1 counters while draining/drawing off Auntie Ool whenever counters land; a strategy never used in a Commander precon before",
+  "status": "Stock precon, unmodified",
+  "card_count": 100
+ },
+ {
+  "slug": "world-shaper-precon",
+  "name": "World Shaper \u2014 Edge of Eternities Commander Precon",
+  "commander": "Szarel, Genesis Shepherd (featured alt commander: Hearthhull, the Worldseed)",
+  "bracket": "2 (0 Game Changers, per Archidekt's Core/2 estimate)",
+  "colors": "Jund (Black/Red/Green)",
+  "theme": "Sacrifice lands for value, then recur them \u2014 Szarel puts +1/+1 counters on a creature whenever you sacrifice a permanent; a deep land-sacrifice/recursion package (Titania, The Gitrog Monster, Splendid Reclamation, Worldsoul's Rage) turns your own lands into a renewable resource",
+  "status": "Stock precon, unmodified",
+  "card_count": 100
+ },
+ {
+  "slug": "planeswalker-party-precon",
+  "name": "Planeswalker Party \u2014 Commander Masters Commander Precon",
+  "commander": "Commodore Guff (planeswalker that can be your commander)",
+  "bracket": "3 (1 Game Changer: Narset, Parter of Veils)",
+  "colors": "Jeskai ({W}{U}{R})",
+  "theme": "Superfriends \u2014 17 planeswalkers in the 99. Guff adds a loyalty counter to another walker each end step and his -3 draws/burns for X = walkers you control. Proliferate (Flux Channeler, Thrummingbird, Grateful Apparition, Karn's Bastion), loyalty-ability doublers (Oath of Teferi, The Chain Veil, Leori, Jaya's Phoenix, Repeated Reverberation) and attack deterrents protecting the walkers (Norn's Annex, Onakke Oathkeeper, Silent Arbiter, Fog Bank, Wall of Denial, Promise of Loyalty).",
+  "status": "Stock precon, unmodified",
+  "card_count": 100
+ },
+ {
+  "slug": "counter-blitz-precon",
+  "name": "Counter Blitz \u2014 Final Fantasy X Commander Precon",
+  "commander": "Tidus, Yuna's Guardian (alt commander in the 99: Yuna, Grand Summoner)",
+  "bracket": "3 (contains 1 Game Changer)",
+  "colors": "Bant (Green/White/Blue)",
+  "theme": "+1/+1 counters \u2014 accumulate, move, and proliferate counters; go wide and tall",
+  "status": "Precon, modified \u2014 3 GW lands moved to Feather Storm",
+  "card_count": 100
+ }
+]

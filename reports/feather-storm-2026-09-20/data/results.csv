@@ -1,0 +1,24 @@
+opponent,wins,losses,draws,win_rate,ci_low,ci_high,median_turns,verdict,match_id
+chaos-incarnate-precon,16,4,0,0.8000,0.5840,0.9193,20,favoured,0920-0051-004e
+quandrix-unlimited-precon,15,5,0,0.7500,0.5313,0.8881,17,favoured,0920-0057-5456
+blood-rites-precon,14,6,0,0.7000,0.4810,0.8545,18,too close to call,0920-0051-a5f5
+counter-intelligence-precon,14,6,0,0.7000,0.4810,0.8545,19,too close to call,0920-0053-7bce
+squirreled-away-precon,14,6,0,0.7000,0.4810,0.8545,19,too close to call,0920-0058-d14a
+counter-blitz-precon,13,7,0,0.6500,0.4329,0.8188,20,too close to call,0920-0053-4d57
+family-matters-precon,13,7,0,0.6500,0.4329,0.8188,18,too close to call,0920-0055-fe16
+abzan-armor-precon,12,8,0,0.6000,0.3866,0.7812,18,too close to call,0920-0051-bfbb
+blight-curse-precon,12,8,0,0.6000,0.3866,0.7812,22,too close to call,0920-0051-9268
+elven-council-precon,12,8,0,0.6000,0.3866,0.7812,18,too close to call,0920-0053-324c
+planeswalker-party-precon,12,8,0,0.6000,0.3866,0.7812,21,too close to call,0920-0056-2237
+grave-danger-precon,11,9,0,0.5500,0.3421,0.7418,17,too close to call,0920-0055-ab39
+jeskai-striker-precon,11,9,0,0.5500,0.3421,0.7418,21,too close to call,0920-0055-8f95
+animated-army-precon,10,10,0,0.5000,0.2993,0.7007,17,too close to call,0920-0051-4f49
+halo-proxy-astor-equipment,10,10,0,0.5000,0.2993,0.7007,18,too close to call,0920-0055-871f
+silverquill-influence-precon,10,10,0,0.5000,0.2993,0.7007,18,too close to call,0920-0058-7b2a
+sneak-attack-precon,10,10,0,0.5000,0.2993,0.7007,19,too close to call,0920-0058-8bbc
+eternal-might-precon,8,12,0,0.4000,0.2188,0.6134,18,too close to call,0920-0053-c8ba
+world-shaper-precon,8,12,0,0.4000,0.2188,0.6134,20,too close to call,0920-0101-4990
+temur-roar-precon,7,13,0,0.3500,0.1812,0.5671,17,too close to call,0920-0100-517f
+lorehold-spirit-precon,6,14,0,0.3000,0.1455,0.5190,18,too close to call,0920-0056-48ba
+sultai-arisen-precon,5,15,0,0.2500,0.1119,0.4687,18,unfavoured,0920-0059-95d5
+veloci-ramp-tor-precon,4,16,0,0.2000,0.0807,0.4160,18,unfavoured,0920-0100-bada

@@ -1,0 +1,18 @@
+# Forge itself is downloaded, never committed. 300 MB of someone else's GPL
+# code plus card data, pinned by scripts/fetch-forge.sh.
+vendor/
+
+# Build output
+java/build/
+dist/
+*.egg-info/
+__pycache__/
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Transcripts and live match state live under XDG paths, but a stray run with
+# an overridden home would land them here.
+*.db
+*.sock
+reports/*/data/sweep-progress.log
