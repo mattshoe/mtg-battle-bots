@@ -1,16 +1,18 @@
 """Decks in, Forge ``.dck`` files out.
 
-Two sources feed this: Matt's collection database, and a plain text decklist for
-anything not in it. Both land on :class:`DeckList`, and only :func:`to_dck` knows
+Two sources feed this: a plain text decklist, which is all the harness needs,
+and a sharded SQLite collection database, which is a convenience for one
+particular setup. Both land on :class:`DeckList`, and only :func:`to_dck` knows
 what Forge wants to read.
 
-The collection database is opened read-only and never written to. It is the
-record of what Matt physically owns, a harness that plays games has no business
-changing it.
+The collection database is opened read-only and never written to. It is a
+record of cards someone physically owns, and a harness that plays games has no
+business changing it.
 """
 
 from __future__ import annotations
 
+import os
 import re
 import sqlite3
 import unicodedata
@@ -19,14 +21,33 @@ from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 
-DEFAULT_DB_DIR = (
-    Path.home()
-    / "Library/CloudStorage/GoogleDrive-mattshoe81@gmail.com/My Drive/claude-sandbox/mtg"
-)
-
 # decks and deck_cards live in the core shard. The other shards hold oracle text,
 # legality and tags, none of which a .dck needs.
 CORE_DB = "collection-core.db"
+
+#: Where the collection database lives, if there is one.
+#:
+#: Set GAUNTLET_COLLECTION to point at a directory holding the sharded SQLite
+#: collection. Without it, the only deck source is a text decklist, which is all
+#: this harness needs to run. The collection reader is a convenience for one
+#: particular setup, not a dependency.
+#:
+#: The fallback searches Google Drive rather than naming an account, because
+#: hardcoding one person's path into a shared tool helps exactly one person.
+_COLLECTION_ENV = "GAUNTLET_COLLECTION"
+
+
+def _default_db_dir() -> Path | None:
+    raw = os.environ.get(_COLLECTION_ENV)
+    if raw:
+        return Path(raw).expanduser()
+    drive = Path.home() / "Library/CloudStorage"
+    if drive.is_dir():
+        for account in sorted(drive.glob("GoogleDrive-*")):
+            candidate = account / "My Drive/claude-sandbox/mtg"
+            if (candidate / CORE_DB).exists():
+                return candidate
+    return None
 
 # Singleton rules exempt these, so more than one copy is not a deckbuilding error.
 BASIC_LANDS = frozenset(
@@ -86,8 +107,8 @@ def _norm(name: str) -> str:
     """Match key for card names.
 
     Accents and curly apostrophes differ between the database, Scryfall exports
-    and whatever Matt pasted in, so they are folded away before comparing.
-    Clavileño and Yuna's Guardian both arrive spelled more than one way.
+    and hand-typed lists, so they are folded away before comparing. Clavileño
+    and Yuna's Guardian both arrive spelled more than one way.
     """
     folded = unicodedata.normalize("NFKD", name.replace("\N{RIGHT SINGLE QUOTATION MARK}", "'"))
     stripped = "".join(ch for ch in folded if not unicodedata.combining(ch))
@@ -104,10 +125,10 @@ _TWO_HALF_NAME_LAYOUTS = frozenset({"split", "room"})
 def _forge_name(name: str, layout: str | None = None) -> str:
     """Spell a card the way Forge's card database spells it.
 
-    Three commanders come out of the collection as ``X // X``, because the
-    printing Matt owns is an art card or a reversible card and the importer took
-    the name off the printing. Jetmir and Breya and Dina are ordinary one-faced
-    cards, so the doubled name matches nothing in Forge.
+    Some commanders come out of a collection as ``X // X``, because the
+    printing is an art card or a reversible card and the importer took the name
+    off the printing. Jetmir and Breya and Dina are ordinary one-faced cards, so
+    the doubled name matches nothing in Forge.
 
     With no layout to go on the name is left exactly as it came in. Guessing
     would break split cards and adventures in opposite directions, and a wrong
@@ -176,7 +197,14 @@ def parse_commander_field(raw: str, known: dict[str, str] | None = None) -> tupl
 
 
 def _connect(db_dir: Path | None) -> sqlite3.Connection:
-    path = (db_dir or DEFAULT_DB_DIR) / CORE_DB
+    base = db_dir or _default_db_dir()
+    if base is None:
+        raise DeckError(
+            "no collection database found. Set "
+            f"{_COLLECTION_ENV} to the directory holding {CORE_DB}, or pass a "
+            "decklist file instead of a collection slug."
+        )
+    path = base / CORE_DB
     if not path.exists():
         raise DeckError(f"collection database not found at {path}")
     conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)

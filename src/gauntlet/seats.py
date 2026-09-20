@@ -34,6 +34,15 @@ class SeatTimeout(Exception):
     """Nobody answered in time. The bridge will let Forge decide instead."""
 
 
+class SeatExhausted(Exception):
+    """The seat cannot answer any more questions, and retrying will not help.
+
+    Distinct from a timeout. A timeout costs one decision, this costs every
+    remaining one, so a run that sees it must stop rather than spend hours
+    quietly handing the game to Forge and reporting the result as the agent's.
+    """
+
+
 class Seat(ABC):
     """Answers decisions for one player."""
 
@@ -309,6 +318,7 @@ __all__ = [
     "ForgeSeat",
     "InteractiveSeat",
     "Seat",
+    "SeatExhausted",
     "SeatTimeout",
     "build_seat",
 ]

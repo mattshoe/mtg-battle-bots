@@ -1,0 +1,86 @@
+{
+ "deck": "feather-storm",
+ "elapsed_s": 9501.0,
+ "pairings": [
+  {
+   "opponent": "invent-superiority-precon",
+   "wins": 17,
+   "losses": 3,
+   "draws": 0,
+   "win_rate": 0.85,
+   "median_turns": 18,
+   "match": "0920-0909-faa7",
+   "error": ""
+  },
+  {
+   "opponent": "fairy-alela-faerie-tribal",
+   "wins": 14,
+   "losses": 6,
+   "draws": 0,
+   "win_rate": 0.7,
+   "median_turns": 21,
+   "match": "0920-0909-1890",
+   "error": ""
+  },
+  {
+   "opponent": "prismari-artistry-precon",
+   "wins": 12,
+   "losses": 8,
+   "draws": 0,
+   "win_rate": 0.6,
+   "median_turns": 20,
+   "match": "0920-1122-b70c",
+   "error": ""
+  },
+  {
+   "opponent": "witherbloom-pestilence-precon",
+   "wins": 12,
+   "losses": 8,
+   "draws": 0,
+   "win_rate": 0.6,
+   "median_turns": 17,
+   "match": "0920-1124-c051",
+   "error": ""
+  },
+  {
+   "opponent": "dance-of-the-elements-precon",
+   "wins": 11,
+   "losses": 9,
+   "draws": 0,
+   "win_rate": 0.55,
+   "median_turns": 19,
+   "match": "0920-0909-0d8c",
+   "error": ""
+  },
+  {
+   "opponent": "lol-proxy-valgavoth-sacrifice",
+   "wins": 11,
+   "losses": 9,
+   "draws": 0,
+   "win_rate": 0.55,
+   "median_turns": 18,
+   "match": "0920-1121-ccba",
+   "error": ""
+  },
+  {
+   "opponent": "explorers-of-the-deep-precon",
+   "wins": 9,
+   "losses": 11,
+   "draws": 0,
+   "win_rate": 0.45,
+   "median_turns": 17,
+   "match": "0920-0909-6123",
+   "error": ""
+  },
+  {
+   "opponent": "spirit-squadron-precon",
+   "wins": 9,
+   "losses": 11,
+   "draws": 0,
+   "win_rate": 0.45,
+   "median_turns": 18,
+   "match": "0920-1123-b2a3",
+   "error": ""
+  }
+ ]
+}

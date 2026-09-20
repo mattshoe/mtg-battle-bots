@@ -36,6 +36,8 @@ class Pairing:
     turns: list[int] = field(default_factory=list)
     match_id: str = ""
     error: str = ""
+    #: Set when a seat ran out of capacity. The numbers are not usable.
+    exhausted: bool = False
 
     @property
     def played(self) -> int:
@@ -114,6 +116,8 @@ def run_pairing(
             pairing.losses += 1
     if result.error:
         pairing.error = result.error
+    if getattr(result, "exhausted", None):
+        pairing.exhausted = True
     return pairing
 
 
@@ -171,6 +175,14 @@ def run_sweep(
                 done.append(finished)
                 if on_done is not None:
                     on_done(finished, len(done), len(pairings))
+
+                # One exhausted seat means every later pairing would be played
+                # by Forge wearing an agent's name. Cancel the rest rather than
+                # spend hours producing a result that reads as an agent run.
+                if finished.exhausted:
+                    for pending in futures:
+                        pending.cancel()
+                    break
     finally:
         transcript.close()
 
@@ -206,6 +218,15 @@ def format_table(deck: str, results: list[Pairing], elapsed: float) -> str:
 
     overall = wins / decisive if decisive else 0.0
     lines += ["", f"overall {wins}-{losses}-{draws}, {overall:.0%} of decisive games"]
+
+    spent = [p for p in results if p.exhausted]
+    if spent:
+        lines += [
+            "",
+            "WARNING: a seat ran out of capacity during this sweep, so some or all",
+            "of these games were played by Forge's AI rather than the seat named.",
+            "Do not read these numbers as an agent result.",
+        ]
     if draws:
         # A draw here is usually a game that hit the clock, not a real draw.
         # Treating it as half a win would flatter a deck that stalls out.

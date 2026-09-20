@@ -12,9 +12,9 @@ import pytest
 
 from gauntlet.decks import (
     CORE_DB,
-    DEFAULT_DB_DIR,
     DeckError,
     DeckList,
+    _default_db_dir,
     from_collection,
     from_text,
     list_collection_decks,
@@ -24,7 +24,9 @@ from gauntlet.decks import (
     write_dck,
 )
 
-HAVE_DB = (DEFAULT_DB_DIR / CORE_DB).exists()
+# The collection is optional, so the tests that need it skip when it is absent.
+_DB_DIR = _default_db_dir()
+HAVE_DB = _DB_DIR is not None and (_DB_DIR / CORE_DB).exists()
 needs_db = pytest.mark.skipif(not HAVE_DB, reason="collection database is not mounted")
 
 FORGE_PRECON = (

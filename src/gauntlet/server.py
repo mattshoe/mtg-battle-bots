@@ -29,7 +29,7 @@ from typing import Any
 
 from . import paths
 from .protocol import NOTIFICATIONS, ProtocolError, Request, Response
-from .seats import InteractiveSeat, Seat, SeatTimeout
+from .seats import InteractiveSeat, Seat, SeatExhausted, SeatTimeout
 from .transcript import Transcript
 
 
@@ -41,6 +41,8 @@ class MatchResult:
     games: list[dict[str, Any]] = field(default_factory=list)
     crashed: bool = False
     error: str = ""
+    #: Seats that ran out of capacity. Non-empty invalidates the result.
+    exhausted: dict[str, str] = field(default_factory=dict)
 
     def wins_by_seat(self) -> dict[str, int]:
         out: dict[str, int] = {}
@@ -78,6 +80,9 @@ class MatchServer:
 
         self.result = MatchResult(match_id=match_id)
         self.finished = threading.Event()
+        #: Seats that ran out of capacity, by seat name. Non-empty means the
+        #: run's numbers are not what they claim to be.
+        self.exhausted: dict[str, str] = {}
 
         self._tcp: socket.socket | None = None
         self._ctl: socket.socket | None = None
@@ -204,6 +209,19 @@ class MatchServer:
         try:
             response = seat.decide(request, self.decision_timeout)
             response.validate_against(request)
+        except SeatExhausted as exc:
+            # Every remaining decision for this seat will fail the same way.
+            # Falling back silently would finish the run and report Forge's play
+            # as the agent's, which is the one thing this harness must never do.
+            self.exhausted[request.seat] = str(exc)
+            self._record(request, None, started, f"seat exhausted: {exc}")
+            self.transcript.record_event(
+                match_id=self.match_id,
+                kind="seat_exhausted",
+                payload={"seat": request.seat, "reason": str(exc)},
+            )
+            self.finished.set()
+            return _defer(request)
         except (SeatTimeout, ProtocolError) as exc:
             self._record(request, None, started, str(exc))
             return _defer(request)

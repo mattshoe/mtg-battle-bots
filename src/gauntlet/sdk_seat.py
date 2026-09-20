@@ -23,7 +23,7 @@ from typing import Any
 
 from .prompt import build_prompt, parse_reply
 from .protocol import ProtocolError, Request, Response
-from .seats import Seat, SeatTimeout
+from .seats import Seat, SeatExhausted, SeatTimeout
 
 DEFAULT_MODEL = "claude-haiku-4-5-20251001"
 
@@ -41,6 +41,29 @@ WHY: <one or two sentences on what you are playing for>
 Play the deck's actual plan rather than taking the biggest thing on offer. The
 reasoning is read afterwards by someone working out why the deck won or lost, so
 say what you are playing for, not what the card does."""
+
+
+#: Replies that mean the seat is done for good rather than confused about one
+#: question. Every one of these was observed in a real run that then spent two
+#: and a half hours falling back to Forge on every single decision and
+#: reporting the result as though agents had played it.
+_TERMINAL_MARKERS = (
+    "session limit",
+    "usage limit",
+    "rate limit",
+    "quota",
+    "will not respond",
+    "no further responses",
+)
+
+
+def _terminal_reply(text: str) -> str:
+    """Whether a reply means this seat can no longer play at all."""
+    lowered = text.lower()
+    for marker in _TERMINAL_MARKERS:
+        if marker in lowered:
+            return " ".join(text.split())[:200]
+    return ""
 
 
 class SdkSeat(Seat):
@@ -131,7 +154,7 @@ class SdkSeat(Seat):
     def decide(self, request: Request, timeout: float) -> Response:
         with self._lock:
             if self._closed:
-                raise SeatTimeout("seat closed")
+                raise SeatExhausted("seat is closed, it ran out of capacity earlier")
             loop = self._ensure_loop()
 
         self._seen_cards.update(request.new_cards)
@@ -145,6 +168,14 @@ class SdkSeat(Seat):
             raise SeatTimeout(f"sdk did not answer within {timeout:.0f}s") from exc
         except Exception as exc:
             raise SeatTimeout(f"sdk call failed: {type(exc).__name__}: {exc}") from exc
+
+        blocker = _terminal_reply(text)
+        if blocker:
+            # Mark the seat closed so the next decision fails immediately
+            # instead of paying the round trip to be told the same thing.
+            with self._lock:
+                self._closed = True
+            raise SeatExhausted(blocker)
 
         try:
             choice, why = parse_reply(text, request)

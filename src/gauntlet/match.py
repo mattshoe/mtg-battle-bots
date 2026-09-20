@@ -240,6 +240,13 @@ def run(plan_: MatchPlan, *, transcript: Transcript | None = None) -> MatchResul
             status = "crashed"
             server.result.crashed = True
             server.result.error = f"forge exited {code}, see {log_path}"
+        if server.exhausted:
+            # Not a crash, but the result is not trustworthy either. Say so
+            # loudly enough that a caller cannot use the numbers by accident.
+            status = "exhausted"
+            server.result.exhausted = dict(server.exhausted)
+            detail = "; ".join(f"{k}: {v}" for k, v in server.exhausted.items())
+            server.result.error = f"seat ran out of capacity mid-run ({detail})"
     except KeyboardInterrupt:
         status = "crashed"
         server.result.error = "interrupted"

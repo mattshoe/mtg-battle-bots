@@ -1,0 +1,12 @@
+The Java bridge in this directory links against Forge, which is licensed under
+the GNU General Public License version 3 or later. It is therefore also
+GPL-3.0-or-later, and not covered by the MIT license at the repository root.
+
+The Python harness communicates with this bridge over a local socket as a
+separate process. That separation is deliberate. Do not collapse it by
+importing one into the other's build.
+
+Forge itself is not distributed here. scripts/fetch-forge.sh downloads a pinned
+release at install time.
+
+Full GPL-3.0 text: https://www.gnu.org/licenses/gpl-3.0.txt
