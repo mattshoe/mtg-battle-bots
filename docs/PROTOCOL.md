@@ -81,7 +81,7 @@ Emitted by `PlayerControllerGauntlet.envelope` plus the per-kind additions,
 with `v` and `id` stamped on by `Bridge.ask`.
 
 This table describes a decision request. A notification is built separately and
-carries only `v`, `id`, `kind` and its own payload, see section 1.9.
+carries only `v`, `id`, `kind` and its own payload, see Notifications below.
 
 | Field | Type | Present | Meaning |
 |---|---|---|---|
@@ -511,7 +511,7 @@ Keys are slugs. Values.
     "name": "Boros Charm",
     "cost": "{R}{W}",
     "type": "Instant",
-    "text": "Choose one —\n• Boros Charm deals 4 damage to target player or planeswalker.\n• Permanents you control gain indestructible until end of turn.\n• Target creature gains double strike until end of turn."
+    "text": "Choose one -\n* Boros Charm deals 4 damage to target player or planeswalker.\n* Permanents you control gain indestructible until end of turn.\n* Target creature gains double strike until end of turn."
   },
   "feather-the-redeemed": {
     "name": "Feather, the Redeemed",

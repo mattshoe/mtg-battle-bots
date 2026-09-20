@@ -8,7 +8,7 @@ set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(dirname "$here")"
-vendor="$root/vendor"
+vendor="${GAUNTLET_FORGE_HOME:-$root/vendor}"
 
 forge_jar="$(ls "$vendor"/forge-gui-desktop-*-jar-with-dependencies.jar 2>/dev/null | head -1)"
 gson_jar="$(ls "$vendor"/lib/gson-*.jar 2>/dev/null | head -1)"

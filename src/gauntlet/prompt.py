@@ -86,7 +86,11 @@ def render_state(state: dict[str, Any], cards: dict[str, Any]) -> str:
         "  Battlefield: " + (", ".join(_permanent_line(p, cards) for p in board) or "empty")
     )
 
-    for zone, label in (("command", "Command zone"), ("graveyard", "Graveyard")):
+    for zone, label in (
+        ("command", "Command zone"),
+        ("graveyard", "Graveyard"),
+        ("exile", "Exile"),
+    ):
         entries = me.get(zone) or []
         if entries:
             lines.append(f"  {label}: " + ", ".join(_card_line(c, cards) for c in entries))

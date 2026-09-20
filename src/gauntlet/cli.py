@@ -103,7 +103,12 @@ def run_match(
     game_format: Annotated[str, typer.Option("--format", help="Forge game type.")] = "Commander",
     routed: Annotated[
         str,
-        typer.Option(help="Decision kinds sent to a seat, comma separated. Fewer is faster."),
+        typer.Option(
+            help=(
+                "Decision kinds sent to a seat, comma separated. Fewer is faster. "
+                "Prefix with SEAT= to set one seat, e.g. 'A=attack,block'."
+            )
+        ),
     ] = ",".join(matchmod.DEFAULT_ROUTED),
     decision_timeout: Annotated[int, typer.Option(help="Seconds a seat may think.")] = 300,
     game_timeout: Annotated[int, typer.Option(help="Seconds before a draw is called.")] = 900,
@@ -118,28 +123,29 @@ def run_match(
     seat has to come back to it with `gauntlet act`. Anything else runs in the
     foreground where you can watch the result.
     """
-    from .protocol import KINDS
-
-    kinds = tuple(k.strip() for k in routed.split(",") if k.strip())
-    # A typo here routes nothing and looks like a slow agent, hours later.
-    unknown = [k for k in kinds if k not in KINDS]
-    if unknown:
-        _fail(f"unknown decision kind(s) {unknown}, known kinds are {sorted(KINDS)}")
+    try:
+        per_seat = _parse_routed(routed)
+    except ValueError as exc:
+        _fail(str(exc))
         return
+
+    def seat_opts(kind: str) -> dict:
+        return {"model": model} if kind in ("api", "sdk") else {}
+
     specs = [
         matchmod.SeatSpec(
             seat="A",
             deck=a,
             controller=seat_a,
-            routed=kinds,
-            options={"model": model} if seat_a == "api" else {},
+            routed=per_seat.get("A", per_seat["*"]),
+            options=seat_opts(seat_a),
         ),
         matchmod.SeatSpec(
             seat="B",
             deck=b,
             controller=seat_b,
-            routed=kinds,
-            options={"model": model} if seat_b == "api" else {},
+            routed=per_seat.get("B", per_seat["*"]),
+            options=seat_opts(seat_b),
         ),
     ]
 
@@ -231,7 +237,9 @@ def act(
         # The id is left out deliberately when the caller did not give one. The
         # daemon knows which question it last showed this seat, and resolving it
         # there is what stops a late answer landing on a different question.
-        payload |= {"choice": choice, "why": why}
+        # Same 500 character limit the model path applies in parse_reply.
+        # One column, one limit.
+        payload |= {"choice": choice, "why": " ".join(why.split())[:500]}
         if decision_id is not None:
             payload["id"] = decision_id
 
@@ -297,7 +305,7 @@ def status(
     except (FileNotFoundError, ConnectionError) as exc:
         _fail(str(exc))
         return
-    _emit(reply, as_json, jsonlib.dumps(reply, indent=1))
+    _emit(reply, as_json, _human_status(reply))
 
 
 @app.command("stop")
@@ -381,6 +389,9 @@ def sweep_cmd(
                 {
                     "deck": deck,
                     "elapsed_s": round(elapsed, 1),
+                    # A void run must be detectable without reading prose.
+                    "valid": not any(p.exhausted for p in results),
+                    "exhausted": [p.opponent for p in results if p.exhausted],
                     "pairings": [
                         {
                             "opponent": p.opponent,
@@ -391,6 +402,7 @@ def sweep_cmd(
                             "median_turns": p.median_turns,
                             "match": p.match_id,
                             "error": p.error,
+                            "exhausted": p.exhausted,
                         }
                         for p in results
                     ],
@@ -491,3 +503,47 @@ def main() -> None:  # pragma: no cover - console script shim
 
 if __name__ == "__main__":  # pragma: no cover
     sys.exit(app())
+
+
+def _human_status(reply: dict) -> str:
+    """A running match's state in a line or two, rather than raw JSON."""
+    seats = ", ".join(f"{k}={v}" for k, v in (reply.get("seats") or {}).items())
+    games = reply.get("games") or []
+    wins = reply.get("wins") or {}
+    state = "finished" if reply.get("finished") else "running"
+    lines = [f"{reply.get('match', '?')}  {state}  {seats}"]
+    if games:
+        lines.append(f"{len(games)} game(s) played, wins {wins or 'none yet'}")
+    else:
+        lines.append("no games finished yet")
+    return "\n".join(lines)
+
+
+def _parse_routed(spec: str) -> dict[str, tuple[str, ...]]:
+    """Parse --routed into per-seat kind tuples.
+
+    Two forms. A bare list applies to every seat, and `SEAT=list` entries
+    separated by spaces or semicolons override individual seats. The wire and
+    the Java side have always been per-seat, only the CLI was not.
+
+    A typo routes nothing and looks like a slow agent hours later, so unknown
+    kinds are rejected here rather than discovered in a transcript.
+    """
+    from .protocol import KINDS
+
+    out: dict[str, tuple[str, ...]] = {}
+    default: tuple[str, ...] | None = None
+
+    for chunk in spec.replace(";", " ").split():
+        seat, sep, rest = chunk.partition("=")
+        kinds = tuple(k.strip() for k in (rest if sep else chunk).split(",") if k.strip())
+        unknown = [k for k in kinds if k not in KINDS]
+        if unknown:
+            raise ValueError(f"unknown decision kind(s) {unknown}, known kinds are {sorted(KINDS)}")
+        if sep:
+            out[seat.strip().upper()] = kinds
+        else:
+            default = kinds
+
+    out["*"] = default if default is not None else tuple(matchmod.DEFAULT_ROUTED)
+    return out

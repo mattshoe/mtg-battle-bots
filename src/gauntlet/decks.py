@@ -497,3 +497,45 @@ def validate(deck: DeckList) -> list[str]:
             problems.append(f"{card}: commander is also in the main deck, Forge will refuse it")
 
     return problems
+
+
+def from_dck(path: Path) -> DeckList:
+    """Read a Forge ``.dck`` back into a DeckList.
+
+    Set codes after a ``|`` are dropped. They pin a printing, and a printing
+    that Forge's card data spells differently is a deck that will not load.
+    """
+    name = path.stem
+    commanders: list[str] = []
+    main: list[tuple[int, str]] = []
+    section = ""
+
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            section = line[1:-1].lower()
+            continue
+        if section == "metadata":
+            if line.lower().startswith("name="):
+                name = line.split("=", 1)[1].strip() or name
+            continue
+        if section not in ("commander", "main"):
+            continue
+
+        qty, _, rest = line.partition(" ")
+        if not qty.isdigit() or not rest.strip():
+            continue
+        card = rest.split("|", 1)[0].strip()
+        if section == "commander":
+            commanders.extend([card] * int(qty))
+        else:
+            main.append((int(qty), card))
+
+    return DeckList(
+        name=name,
+        commanders=tuple(commanders),
+        main=tuple(sorted(main, key=lambda x: x[1])),
+        source=f"dck:{path}",
+    )

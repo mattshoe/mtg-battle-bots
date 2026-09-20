@@ -116,7 +116,11 @@ Compact and stable field order, so two transcripts diff cleanly.
     "battlefield": [{"c": "sol-ring"}], "graveyard": ["shock"], "command": [],
     "cmd_damage_to_me": {"ureni-of-the-unwritten": 7}   // omitted when zero
   }],
-  "stack": []                       // omitted when empty
+  "stack": [],                      // omitted when empty
+  "combat": [                       // omitted when no attackers
+    {"c": "tempest-hawk", "pt": "2/2", "attacking": "B",
+     "blocked_by": ["sygg-river-cutthroat"]}
+  ]
 }
 ```
 
@@ -128,18 +132,21 @@ wide board short.
 ## Decision policy — the speed dial
 
 A Commander game asks a player thousands of questions. Almost none of them are
-interesting. `policy.toml` names which kinds route to a seat and which the
-bridge resolves itself:
+interesting, so each one is handled at the cheapest level that can answer it:
 
 | Class | Handling | Examples |
 |---|---|---|
-| forced | resolved in Java, never leaves the JVM | single legal target, mandatory trigger with one mode |
-| heuristic | Forge's AI decides, logged but not asked | mana payment, scry order, combat damage ordering |
-| judgment | routed to the seat | what to cast, attacks, blocks, targets, modes, mulligan |
+| forced | resolved in Java, never leaves the JVM | mana abilities, a repeat of a pass the seat already made on this board |
+| heuristic | Forge's AI decides, logged but not asked | mana payment, targeting, modes, scry order, damage assignment |
+| judgment | routed to the seat | `mulligan`, `cast_or_pass`, `attack`, `block` |
 
 Moving a kind from `judgment` to `heuristic` is how you trade fidelity for
-throughput. The default policy is tuned so a Commander game costs roughly 30-50
-round trips per seat rather than several hundred.
+throughput. The default is tuned so a Commander game costs roughly 15-30 round
+trips per seat rather than several hundred.
+
+There is no policy file. `gauntlet run --routed` becomes `--routed SEAT=kinds`
+on the java command line, and `PlayerControllerGauntlet.routes()` checks that
+set before every decision. A kind that is not in it never leaves the JVM.
 
 ## Seats
 
@@ -148,13 +155,21 @@ A seat is anything that can answer a `DecisionRequest`.
 - **`interactive`** — decisions queue up and an agent drains them with
   `gauntlet act`. One Bash call per decision. This is the "you and a subagent
   play a game" mode.
-- **`api`** — the service calls the Claude API itself. No human or agent in the
-  loop, hundreds of games unattended.
+- **`sdk`** — a persistent Claude Agent SDK session, running on whatever auth
+  Claude Code already has. No API key and nothing extra to pay, at roughly ten
+  seconds a decision.
+- **`api`** — the service calls the Claude API itself. Needs a key and bills
+  separately, at roughly two seconds a decision.
 - **`forge`** — Forge's own AI. The statistical floor, thousands of games, and
   the control arm for any experiment.
 
-The three are interchangeable per seat. Agent versus Forge AI is a valid match
-and is the normal way to sanity-check a deck before spending agent time on it.
+They are interchangeable per seat. Agent versus Forge AI is a valid match and
+is the normal way to sanity-check a deck before spending agent time on it.
+
+A seat that runs out of capacity raises `SeatExhausted`, which ends the match
+and cancels the rest of a sweep. That is deliberately not a fallback: a run that
+quietly finishes with Forge's AI wearing an agent's name is worse than a run
+that stops.
 
 ## The agent loop
 
@@ -176,8 +191,8 @@ renders a readable play-by-play. The reasoning strings are the point — a
 win-rate number tells you a deck lost, the transcript tells you why.
 
 Matches are reproducible. The RNG seed, both decklists, the policy, the Forge
-version and the bridge revision are all recorded, and `gauntlet replay --rerun`
-replays the same seed.
+version and the bridge revision are all recorded, so `gauntlet run` with the
+same seed and decks plays the same games again.
 
 ## What this repo does not do
 

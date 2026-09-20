@@ -475,15 +475,4 @@ public class PlayerControllerGauntlet extends PlayerControllerAi {
 
     // ------------------------------------------------------------------ hooks
 
-    /** Reports a terminal game state so the transcript can close cleanly. */
-    void reportGameOver(String summary) {
-        if (bridge == null || bridge.isBroken()) {
-            return;
-        }
-        JsonObject ev = new JsonObject();
-        ev.addProperty("seat", seat);
-        ev.addProperty("kind", "game_over");
-        ev.addProperty("summary", summary == null ? "" : summary.toLowerCase(Locale.ROOT));
-        bridge.notify(ev);
-    }
 }

@@ -81,9 +81,9 @@ def resolve_deck(ref: str, *, owner: str | None = None) -> deckmod.DeckList:
     candidate = Path(ref).expanduser()
     if candidate.exists():
         if candidate.suffix.lower() == ".dck":
-            raise ValueError(
-                f"{ref} is already a Forge deck; pass it with --deck-file to play it as is"
-            )
+            # Already in Forge's own format. Parsing it into a DeckList and
+            # writing it back out would only risk changing it.
+            return deckmod.from_dck(candidate)
         return deckmod.from_text(candidate.read_text(encoding="utf-8"), candidate.stem)
     return deckmod.from_collection(ref, owner=owner)
 

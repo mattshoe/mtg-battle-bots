@@ -59,7 +59,7 @@ Forge asks a player thousands of questions per game and almost none of them are
 interesting. The bridge answers the mundane ones itself and routes the ~30 per
 game that need judgment out to a seat. That ratio is the whole design.
 
-## The three kinds of seat
+## The four kinds of seat
 
 | Seat | Who decides | Speed | Use it for |
 |---|---|---|---|
@@ -83,8 +83,10 @@ uv run gauntlet doctor     # checks the install
 Then play a game:
 
 ```bash
-# Forge AI both sides, fast, free
-gauntlet run --a my-deck.txt --b their-deck.txt --seat-a forge --seat-b forge --games 10
+# Forge AI both sides, fast, free. Decks are a path to a text list,
+# a path to a Forge .dck, or a slug from the collection database.
+gauntlet run --a my-deck.txt --b their-deck.txt \
+             --seat-a forge --seat-b forge --games 10
 
 # Two agents, one close read
 gauntlet run --a my-deck.txt --b their-deck.txt
@@ -119,7 +121,7 @@ decklists, policy, Forge version and bridge revision.
 
 ## Honesty guarantees
 
-Three properties this harness will not trade away, because a playtest result you
+Properties this harness will not trade away, because a playtest result you
 cannot trust is worse than no playtest.
 
 **A fallback is never disguised as a play.** If a seat times out, errors, or

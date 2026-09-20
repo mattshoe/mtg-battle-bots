@@ -53,9 +53,14 @@ if [[ ! -d res ]]; then
   exit 1
 fi
 
-cards=$(find res/cardsfolder -name '*.txt' | wc -l | tr -d ' ')
+# Forge ships card scripts as a zip, with loose .txt only in older builds.
+if [[ -f res/cardsfolder/cardsfolder.zip ]]; then
+  cards=$(unzip -l res/cardsfolder/cardsfolder.zip '*.txt' 2>/dev/null | tail -1 | awk '{print $2}')
+else
+  cards=$(find res/cardsfolder -name '*.txt' 2>/dev/null | wc -l | tr -d ' ')
+fi
 echo
 echo "forge ${FORGE_VERSION} in $vendor"
-echo "${cards} card scripts"
+echo "${cards:-unknown} card scripts"
 echo
 echo "next: $root/java/build.sh"
