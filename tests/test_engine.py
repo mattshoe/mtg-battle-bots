@@ -124,6 +124,17 @@ def test_the_command_is_a_list_of_strings_subprocess_can_take() -> None:
     assert all(isinstance(part, str) for part in cmd), cmd
 
 
+@pytest.fixture(autouse=True)
+def _forge_home(tmp_path, monkeypatch):
+    """Somewhere to launch from, since Forge is run from its own install root."""
+    from gauntlet import engine
+
+    home = tmp_path / "forge-home"
+    home.mkdir(exist_ok=True)
+    monkeypatch.setattr(engine.paths, "vendor_dir", lambda: home)
+    return home
+
+
 # ------------------------------------------- the process, not just the command
 
 # Everything below build_command was untested, and every mutation survived:
@@ -208,15 +219,10 @@ def test_stop_escalates_to_a_kill(tmp_path) -> None:
     assert not run.running, "a process that ignored terminate was never killed"
 
 
-def test_forge_runs_from_its_own_install_directory(tmp_path, monkeypatch) -> None:
+def test_forge_runs_from_its_own_install_directory(tmp_path, _forge_home) -> None:
     """Forge reads card data relative to the working directory. Getting this
     wrong fails several frames deep as a missing resource bundle."""
-    from gauntlet import engine
     from gauntlet.engine import launch
-
-    home = tmp_path / "forge-home"
-    home.mkdir()
-    monkeypatch.setattr(engine.paths, "vendor_dir", lambda: home)
 
     seen: list[str] = []
     run = launch(["/bin/sh", "-c", "pwd"], tmp_path / "l.log", on_line=seen.append)
@@ -237,3 +243,14 @@ def test_trace_is_passed_to_the_child_only_when_asked(tmp_path) -> None:
         )
         run.wait(timeout=10)
         assert seen == [expected] if expected else seen in ([], [""])
+
+
+def test_a_missing_forge_install_says_so(tmp_path, monkeypatch) -> None:
+    """It used to fail as a FileNotFoundError naming the java binary, which
+    sends you looking in the wrong place entirely."""
+    from gauntlet import engine
+    from gauntlet.engine import launch
+
+    monkeypatch.setattr(engine.paths, "vendor_dir", lambda: tmp_path / "not-here")
+    with pytest.raises(FileNotFoundError, match="fetch-forge"):
+        launch(["/bin/sh", "-c", "true"], tmp_path / "l.log")

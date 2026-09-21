@@ -161,12 +161,19 @@ def launch(
     if trace:
         env["GAUNTLET_TRACE"] = "1"
 
+    workdir = paths.vendor_dir() if _MUST_RUN_FROM_FORGE_HOME else None
+    if workdir is not None and not workdir.is_dir():
+        raise FileNotFoundError(
+            f"Forge's install directory is missing: {workdir}. "
+            "Run scripts/fetch-forge.sh, or set GAUNTLET_FORGE_HOME."
+        )
+
     log_path.parent.mkdir(parents=True, exist_ok=True)
     handle = log_path.open("w", encoding="utf-8")
 
     process = subprocess.Popen(
         cmd,
-        cwd=str(paths.vendor_dir()) if _MUST_RUN_FROM_FORGE_HOME else None,
+        cwd=str(workdir) if workdir is not None else None,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         env=env,
