@@ -52,7 +52,7 @@ branch = true
 [tool.coverage.report]
 # Coverage is a floor that only moves up. Lower it and CI fails, which is the
 # point: a change that adds untested code should not be quietly accepted.
-fail_under = 72
+fail_under = 79
 show_missing = true
 skip_covered = false
 exclude_lines = [
