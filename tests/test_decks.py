@@ -390,15 +390,33 @@ def test_collection_decks_are_the_right_size_with_a_commander():
 
 
 @needs_db
-def test_validate_flags_the_real_illegal_deck():
-    """counter-blitz-precon really does list 3 Blossoming Sands.
+def test_validate_flags_a_duplicate_nonbasic():
+    """Singleton is the rule, and a repeated nonbasic breaks it.
 
-    The deck was modified by hand and the land count went with it. This is the
-    validator doing its job on real data, not a parsing bug, so the test pins the
-    finding rather than papering over it.
+    Built here rather than read from the collection. An earlier version asserted
+    that counter-blitz-precon lists three Blossoming Sands, which it did until
+    the deck was edited, and then this test failed for a reason that had nothing
+    to do with the validator. A test that breaks when someone fixes their deck
+    is testing the wrong thing.
     """
-    problems = validate(from_collection("counter-blitz-precon"))
-    assert problems == ["Blossoming Sands: 3 copies of a nonbasic in a singleton deck"]
+    deck = DeckList(
+        name="singleton violation",
+        commanders=("Killian, Decisive Mentor",),
+        main=((3, "Blossoming Sands"), (60, "Plains"), (36, "Swamp")),
+        source="test",
+    )
+    assert "Blossoming Sands: 3 copies of a nonbasic in a singleton deck" in validate(deck)
+
+
+def test_validate_allows_duplicates_the_card_itself_permits():
+    """Some cards say a deck may run any number, and the validator honours it."""
+    deck = DeckList(
+        name="hawks",
+        commanders=("Jetmir, Nexus of Revels",),
+        main=((19, "Tempest Hawk"), (80, "Plains")),
+        source="test",
+    )
+    assert not [p for p in validate(deck) if "Tempest Hawk" in p]
 
 
 def test_missing_database_raises(tmp_path):
