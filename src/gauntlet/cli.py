@@ -528,6 +528,11 @@ def sweep_cmd(
         if budget.decisions:
             typer.echo(f"\nspent {budget.report()}")
 
+    # Same contract as `run`. A caller that only checks the exit status must
+    # not read a sweep nobody played as a clean one.
+    if any(p.exhausted for p in results):
+        raise typer.Exit(1)
+
 
 # ---------------------------------------------------------------- transcript
 

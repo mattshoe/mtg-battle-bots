@@ -316,6 +316,10 @@ class MatchServer:
 
         try:
             response = seat.decide(request, self.decision_timeout)
+            # The last line of defence. Both current seats validate upstream in
+            # parse_reply, so removing this looks harmless until a new seat
+            # kind arrives, and then an illegal choice is recorded as a play
+            # the agent made with the agent's own reasoning attached.
             response.validate_against(request)
         except SeatExhausted as exc:
             self._charge(seat)
@@ -502,9 +506,15 @@ class MatchServer:
         # One sentinel on both sides. Reading the stored payloads with a
         # different default from the incoming one meant a result with no game
         # number never matched itself, and got counted twice.
-        game_no = int(payload.get("game", 0))
+        # A missing game number means Forge told us less than it should. Number
+        # it in arrival order rather than deduping every such result into one
+        # slot, which turned a twenty-game run into a one-game run.
+        raw = payload.get("game")
         with self._lock:
-            if any(int(g.get("game", 0)) == game_no for g in self.result.games):
+            if raw is None:
+                payload = {**payload, "game": len(self.result.games) + 1}
+            game_no = int(payload["game"])
+            if any(int(g.get("game", -1)) == game_no for g in self.result.games):
                 return
             self.result.games.append(payload)
             # A new game is a new board and a fresh hand. The bridge re-sends

@@ -140,6 +140,12 @@ class InteractiveSeat(Seat):
 
         if not pending.answered.wait(timeout):
             with self._cond:
+                # An answer can land between the wait expiring and this lock
+                # being taken. It was accepted, the agent was told so, and
+                # discarding it here made the engine fall back on a decision
+                # the seat had really made.
+                if pending.response is not None:
+                    return pending.response
                 if self._outstanding is pending:
                     self._outstanding = None
             raise SeatTimeout(f"no answer for {request.kind} within {timeout:.0f}s")

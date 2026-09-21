@@ -382,3 +382,154 @@ def test_a_forge_seat_is_never_given_a_bridge(_isolated, deck_file, fake_forge) 
     )
     cmd = fake_forge["cmd"]
     assert "--bridge" not in cmd
+
+
+# --------------------------------------------- the budget reaching a real run
+
+
+def test_the_cap_the_user_confirmed_reaches_the_running_match(
+    _isolated, deck_file, monkeypatch
+) -> None:
+    """Every budget test built a Budget by hand, and every cost-gate test
+    stopped at a refusal. Nothing checked the object reaches a match, so
+    dropping `budget=budget` from the run call survived.
+    """
+    seen: dict = {}
+
+    def capture(plan_, *, budget=None, **kw):
+        from gauntlet.server import MatchResult
+
+        seen["budget"] = budget
+        seen["plan"] = plan_
+        r = MatchResult(match_id=plan_.match_id)
+        r.expected_seats = set()
+        return r
+
+    monkeypatch.setattr(matchmod, "run", capture)
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            "--a",
+            str(deck_file),
+            "--b",
+            str(deck_file),
+            "--seat-a",
+            "api",
+            "--seat-b",
+            "forge",
+            "--games",
+            "1",
+            "--max-cost",
+            "4.25",
+            "--yes",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert seen["budget"] is not None, "the match ran with no cap at all"
+    assert seen["budget"].max_usd == 4.25
+    # And the plan carries it too, for the detached path.
+    assert seen["plan"].max_usd == 4.25
+
+
+def test_the_cap_reaches_a_sweep(_isolated, monkeypatch) -> None:
+    seen: dict = {}
+
+    def capture(deck, opponents, **kw):
+        seen.update(kw)
+        return [], 0.1
+
+    monkeypatch.setattr(app, "info", app.info)
+    from gauntlet import sweep as sweepmod
+
+    monkeypatch.setattr(sweepmod, "timed_sweep", capture)
+    from gauntlet import cli as climod
+
+    monkeypatch.setattr(climod.sweep, "timed_sweep", capture)
+
+    runner.invoke(
+        app,
+        [
+            "sweep",
+            "--deck",
+            "x",
+            "--against",
+            "a,b",
+            "--games",
+            "1",
+            "--seat-a",
+            "api",
+            "--seat-b",
+            "forge",
+            "--max-cost",
+            "3.5",
+            "--yes",
+        ],
+    )
+    assert seen.get("budget") is not None, "the sweep ran with no cap"
+    assert seen["budget"].max_usd == 3.5
+
+
+def test_a_sweep_nobody_played_exits_nonzero(_isolated, monkeypatch) -> None:
+    """`run` had this contract and `sweep` did not, so a script checking the
+    exit status took a wholly fictional sweep as clean."""
+    from gauntlet import cli as climod
+    from gauntlet.sweep import Pairing
+
+    void = Pairing(deck="mine", opponent="theirs", games=2)
+    void.exhausted = True
+    void.error = "seat ran out of capacity"
+
+    monkeypatch.setattr(climod.sweep, "timed_sweep", lambda *a, **kw: ([void], 1.0))
+    result = runner.invoke(
+        app,
+        [
+            "sweep",
+            "--deck",
+            "mine",
+            "--against",
+            "theirs",
+            "--games",
+            "2",
+            "--seat-a",
+            "forge",
+            "--seat-b",
+            "forge",
+            "--json",
+        ],
+    )
+    payload = json.loads(result.output)
+    assert payload["valid"] is False
+    assert result.exit_code == 1
+
+
+def test_the_headline_rate_excludes_pairings_the_seat_did_not_play() -> None:
+    """The documented regression: a deck that went 1-3 reported at 79% with the
+    warning printed underneath the number."""
+    from gauntlet.sweep import Pairing, format_table
+
+    played = Pairing(deck="d", opponent="real", games=4)
+    played.wins, played.losses = 1, 3
+    void = Pairing(deck="d", opponent="void", games=20)
+    void.wins, void.losses, void.exhausted = 18, 2, True
+    void.error = "seat ran out of capacity"
+
+    table = format_table("d", [played, void], 1.0)
+    assert "overall 1-3-0" in table, table
+    assert "excludes 1 pairing" in table
+    assert "WARNING" in table
+
+
+def test_a_seat_that_died_late_is_still_void(_isolated) -> None:
+    """Existing exhaustion tests all halt on decision one, where the fallback
+    rate covers for a missing exhausted flag. A seat that died on turn 18 of 20
+    leaves the rate under the threshold, so the flag is the only signal."""
+    from gauntlet.server import MatchResult
+
+    late = MatchResult(match_id="late")
+    late.expected_seats = {"A"}
+    late.per_seat = {"A": (100, 5)}
+    late.exhausted = {"A": "session limit"}
+
+    assert not late.trustworthy
+    assert "ran out of capacity" in late.untrustworthy_because

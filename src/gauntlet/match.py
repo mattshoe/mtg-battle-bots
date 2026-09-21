@@ -10,7 +10,6 @@ which is what any batch of more than one game ends up wanting.
 
 from __future__ import annotations
 
-import contextlib
 import json
 import os
 import secrets
@@ -164,6 +163,33 @@ def budget_for(plan_: MatchPlan) -> Budget | None:
     return Budget(**limits)  # type: ignore[arg-type]
 
 
+def _extract_result(line: str) -> dict | None:
+    """Pull one game-result object out of a line of Forge's output.
+
+    Scans for the opening brace rather than requiring the line to be nothing
+    but JSON. Forge writes to stdout from more than one place, so a result can
+    arrive with a log prefix or a trailing word attached.
+    """
+    start = line.find("{")
+    while start != -1:
+        depth = 0
+        for i in range(start, len(line)):
+            if line[i] == "{":
+                depth += 1
+            elif line[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    try:
+                        payload = json.loads(line[start : i + 1])
+                    except ValueError:
+                        break
+                    if isinstance(payload, dict) and payload.get("kind") == "game_result":
+                        return payload
+                    break
+        start = line.find("{", start + 1)
+    return None
+
+
 def _bridge_revision() -> str:
     """Identify the bridge build so a transcript can be trusted later.
 
@@ -271,12 +297,15 @@ def run(
         # upstream would have stopped every result being recorded, silently.
         if "game_result" not in line:
             return
-        # A truncated line is possible while Forge is still writing, and the
-        # next game's result will arrive intact anyway.
-        with contextlib.suppress(ValueError):
-            payload = json.loads(line)
-            if isinstance(payload, dict) and payload.get("kind") == "game_result":
-                server.record_game_result(payload)
+        # Parsed out of the line rather than from the whole of it. Forge shares
+        # stdout with anything else in the JVM, so a log prefix or an
+        # interleaved write used to discard the result with no trace, and this
+        # is the only channel a Forge-versus-Forge match has.
+        payload = _extract_result(line)
+        if payload is not None:
+            server.record_game_result(payload)
+        else:
+            server.serving_errors.append(f"unparseable game result: {line[:120]}")
 
     forge = engine.launch(cmd, log_path, on_line=on_line, trace=plan_.trace)
     # Now that the process exists, give the server a way to end it. An
@@ -301,6 +330,10 @@ def run(
             server.result.crashed = True
             server.result.error = f"forge exited {code}, see {log_path}"
         if server.serving_errors:
+            # An incomplete record is not a trustworthy one either.
+            server.result.exhausted.setdefault(
+                "transcript", f"{len(server.serving_errors)} decision(s) were not recorded"
+            )
             # Some decisions were not recorded, so the transcript is not a
             # complete account of what happened.
             server.result.error = (

@@ -302,3 +302,124 @@ def test_one_dead_seat_is_not_diluted_by_a_healthy_one(tmp_path) -> None:
     assert result.fallback_rate == pytest.approx(0.1)
     assert not result.trustworthy, "a seat that answered nothing was averaged away"
     assert "seat A" in result.untrustworthy_because
+
+
+def test_an_illegal_choice_never_becomes_a_recorded_play(tmp_path) -> None:
+    """The last live check that a seat cannot record a play it never made.
+
+    Both shipped seats validate upstream in parse_reply, so deleting the
+    server's own check looks harmless until a third seat kind arrives. Then an
+    out-of-range choice reaches Forge and is written down as the agent's play,
+    with the agent's reasoning attached.
+    """
+    import sqlite3
+
+    class _Illegal(Seat):
+        controller = "api"
+        costs_money = True
+        last_usage = (10, 2)
+
+        def decide(self, request: Request, timeout: float) -> Response:
+            # Past the end of a two-option list.
+            return Response(id=request.id, choice=99, why="a play I cannot make")
+
+    server = _drive(_Illegal(), tmp_path, 3)
+    try:
+        conn = sqlite3.connect(tmp_path / "t.db")
+        rows = conn.execute(
+            "SELECT chosen, fallback, why FROM decisions WHERE match_id = 'trust'"
+        ).fetchall()
+        conn.close()
+
+        assert rows, "nothing was recorded at all"
+        for chosen, fallback, why in rows:
+            assert fallback == 1, "an illegal choice was recorded as a real play"
+            assert chosen is None
+            assert why == "", "Forge's play carries the agent's reasoning"
+        assert not server.result.trustworthy
+    finally:
+        server.shutdown()
+
+
+def test_a_seat_that_fails_every_decision_still_burns_its_budget(tmp_path) -> None:
+    """Charging only on success meant a seat failing every call spent on every
+    call while the cap never moved."""
+    from gauntlet.budget import Budget
+
+    budget = Budget(max_usd=5.0, model="claude-haiku-4-5")
+    server = MatchServer(
+        match_id="trust",
+        seats={"A": _AlwaysTimesOut()},
+        transcript=Transcript(tmp_path / "t.db"),
+        decision_timeout=0.2,
+        budget=budget,
+    )
+    server.result.expected_seats = {"A"}
+    endpoint, _ = server.bind()
+    server.start()
+    host, port = endpoint.split(":")
+    try:
+        with socket.create_connection((host, int(port)), timeout=5) as sock:
+            stream = sock.makefile("rwb")
+            for i in range(1, 11):
+                stream.write(_wire(i))
+                stream.flush()
+                stream.readline()
+
+        assert budget.decisions == 10, f"ten failed calls were billed as {budget.decisions}"
+        assert budget.spent_usd > 0
+    finally:
+        server.shutdown()
+
+
+def test_one_decisions_token_count_is_not_billed_to_the_next(tmp_path) -> None:
+    """`last_usage` is cleared after billing.
+
+    Leaving it meant every decision after a failure re-billed the previous
+    decision's tokens, so one expensive turn kept charging forever.
+    """
+    from gauntlet.budget import Budget
+
+    class _ExpensiveThenSilent(Seat):
+        controller = "api"
+        costs_money = True
+
+        def __init__(self) -> None:
+            self.n = 0
+            self.last_usage = None
+
+        def decide(self, request: Request, timeout: float) -> Response:
+            self.n += 1
+            if self.n == 1:
+                self.last_usage = (100_000, 1_000)
+                return Response(id=request.id, choice=0, why="expensive")
+            # Says nothing about cost, so the budget must estimate rather than
+            # reuse the first turn's figure.
+            raise SeatTimeout("quiet failure")
+
+    budget = Budget(max_usd=500.0, model="claude-haiku-4-5")
+    server = MatchServer(
+        match_id="trust",
+        seats={"A": _ExpensiveThenSilent()},
+        transcript=Transcript(tmp_path / "t.db"),
+        decision_timeout=0.2,
+        budget=budget,
+    )
+    server.result.expected_seats = {"A"}
+    endpoint, _ = server.bind()
+    server.start()
+    host, port = endpoint.split(":")
+    try:
+        with socket.create_connection((host, int(port)), timeout=5) as sock:
+            stream = sock.makefile("rwb")
+            for i in range(1, 4):
+                stream.write(_wire(i))
+                stream.flush()
+                stream.readline()
+
+        # One expensive turn plus two estimated ones, not three expensive ones.
+        assert budget.input_tokens < 110_000, (
+            f"a stale token count was re-billed: {budget.input_tokens}"
+        )
+    finally:
+        server.shutdown()
