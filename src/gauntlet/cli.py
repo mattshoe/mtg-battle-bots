@@ -271,14 +271,18 @@ def run_match(
             "fallbacks": result.fallbacks,
             "fallback_rate": round(result.fallback_rate, 3),
             "exhausted": result.exhausted,
+            "untrustworthy_because": result.untrustworthy_because,
+            "per_seat": {
+                seat: {"decisions": asked, "fallbacks": missed}
+                for seat, (asked, missed) in result.per_seat.items()
+            },
         },
         as_json,
         f"match {result.match_id}: {result.wins_by_seat() or 'no decisive games'}"
         + (f"\n{result.error}" if result.error else "")
         + (
-            f"\nWARNING: {result.fallback_rate:.0%} of {result.decisions} decisions "
-            "fell back to Forge. These numbers are not an agent result."
-            if not result.trustworthy and result.decisions
+            f"\nWARNING: {result.untrustworthy_because}. These numbers are not an agent result."
+            if not result.trustworthy
             else ""
         )
         + (f"\n{budget.report()}" if budget.decisions else "")
@@ -478,6 +482,7 @@ def sweep_cmd(
         seat_deck=seat_a,
         seat_opponent=seat_b,
         decision_timeout=decision_timeout,
+        model=model,
         budget=budget,
         on_done=progress,
     )

@@ -92,6 +92,10 @@ class _FakeForge:
     def stop(self, grace: float = 5.0) -> None:
         self.stopped.set()
 
+    def drain(self, timeout: float | None = None) -> bool:
+        """The real one joins the log pump. Nothing to wait for here."""
+        return True
+
 
 @pytest.fixture
 def fake_engine(monkeypatch):

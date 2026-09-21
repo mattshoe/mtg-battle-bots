@@ -464,3 +464,68 @@ def test_call_match_refuses_a_match_that_is_not_running(state_root: Path) -> Non
         call_match("nobody", {"op": "status"}, timeout=BRIEF)
 
     assert not paths.match_socket("nobody").exists()
+
+
+def test_card_text_is_shown_again_in_a_new_game(tmp_path) -> None:
+    """Rules text is sent once per game, not once per match.
+
+    Each `gauntlet act` is a fresh process with no memory, so the daemon
+    remembers on the agent's behalf. Holding that memory across a game boundary
+    meant an agent played games two onward reading slugs.
+    """
+    import json
+    import socket
+
+    from gauntlet.seats import InteractiveSeat
+    from gauntlet.server import MatchServer, call_match
+    from gauntlet.transcript import Transcript
+
+    def wire(rid: int) -> bytes:
+        return (
+            json.dumps(
+                {
+                    "v": 1,
+                    "id": rid,
+                    "seat": "A",
+                    "kind": "cast_or_pass",
+                    "prompt": "priority",
+                    "options": [{"i": 0, "label": "Pass priority"}],
+                    "state": {"turn": 1, "me": {"hand": ["cultivate"]}},
+                    "new_cards": {"cultivate": {"name": "Cultivate", "text": "Search."}},
+                }
+            )
+            + "\n"
+        ).encode()
+
+    server = MatchServer(
+        match_id="newgame",
+        seats={"A": InteractiveSeat()},
+        transcript=Transcript(tmp_path / "t.db"),
+        decision_timeout=2.0,
+    )
+    endpoint, _ = server.bind()
+    server.start()
+    host, port = endpoint.split(":")
+    try:
+        with socket.create_connection((host, int(port)), timeout=5) as sock:
+            stream = sock.makefile("rwb")
+
+            stream.write(wire(1))
+            stream.flush()
+            first = call_match("newgame", {"op": "act", "seat": "A", "timeout": 3})
+            assert "cultivate" in first["request"]["new_cards"]
+            call_match(
+                "newgame", {"op": "act", "seat": "A", "choice": 0, "why": "x", "timeout": 0.2}
+            )
+            stream.readline()
+
+            server.record_game_result({"game": 1, "winner": "A", "draw": False})
+
+            stream.write(wire(2))
+            stream.flush()
+            second = call_match("newgame", {"op": "act", "seat": "A", "timeout": 3})
+            assert "cultivate" in second["request"]["new_cards"], (
+                "a new game started and the agent was never told what its cards do"
+            )
+    finally:
+        server.shutdown()

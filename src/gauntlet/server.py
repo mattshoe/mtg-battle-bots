@@ -43,29 +43,66 @@ class MatchResult:
     games: list[dict[str, Any]] = field(default_factory=list)
     crashed: bool = False
     error: str = ""
-    #: Decisions asked of a seat, and how many the seat did not answer.
-    #: A run where nobody answered is not a result, whatever the score says.
-    decisions: int = 0
-    fallbacks: int = 0
+    #: Decisions asked of each seat, and how many that seat did not answer.
+    #: Per seat, because a healthy seat's volume used to dilute a dead one below
+    #: the threshold, and asymmetric --routed makes that the normal shape.
+    per_seat: dict[str, list[int]] = field(default_factory=dict)
+    #: Seats that were given a bridge and should therefore have been asked
+    #: something. One that was asked nothing is a wiring failure, not a clean run.
+    expected_seats: set[str] = field(default_factory=set)
     #: Seats that ran out of capacity. Non-empty invalidates the result.
     exhausted: dict[str, str] = field(default_factory=dict)
 
     @property
+    def decisions(self) -> int:
+        return sum(asked for asked, _ in self.per_seat.values())
+
+    @property
+    def fallbacks(self) -> int:
+        return sum(missed for _, missed in self.per_seat.values())
+
+    @property
     def fallback_rate(self) -> float:
         return self.fallbacks / self.decisions if self.decisions else 0.0
+
+    def seat_fallback_rate(self, seat: str) -> float:
+        asked, missed = self.per_seat.get(seat, (0, 0))
+        return missed / asked if asked else 0.0
+
+    @property
+    def untrustworthy_because(self) -> str:
+        """Why this result cannot be believed, or empty if it can.
+
+        Three ways a run stops being evidence about a deck, all of which have
+        happened: a seat ran out of capacity, a seat answered too little of what
+        it was asked, or a seat that was wired up was never asked anything at
+        all, which means the bridge never worked and Forge played the whole
+        thing.
+        """
+        if self.exhausted:
+            return f"a seat ran out of capacity: {self.exhausted}"
+
+        for seat in sorted(self.expected_seats):
+            asked, _ = self.per_seat.get(seat, (0, 0))
+            if asked == 0:
+                return (
+                    f"seat {seat} was given a bridge and never asked anything, "
+                    "so Forge played its decisions"
+                )
+            rate = self.seat_fallback_rate(seat)
+            if rate > MAX_TOLERABLE_FALLBACK_RATE:
+                return f"seat {seat} did not answer {rate:.0%} of its {asked} decisions"
+        return ""
 
     @property
     def trustworthy(self) -> bool:
         """Whether the numbers in this result mean anything.
 
         A seat that answered almost nothing did not play the games, Forge did,
-        and reporting a win rate for it is the failure this whole harness is
-        built to make impossible. The threshold is deliberately loose: a few
-        fallbacks are normal, a third of them is not a game anyone played.
+        and reporting a win rate for it is the failure this harness exists to
+        make impossible.
         """
-        if self.exhausted:
-            return False
-        return self.fallback_rate <= MAX_TOLERABLE_FALLBACK_RATE
+        return not self.untrustworthy_because
 
     def wins_by_seat(self) -> dict[str, int]:
         out: dict[str, int] = {}
@@ -438,9 +475,11 @@ class MatchServer:
         fallback_reason: str,
     ) -> None:
         with self._lock:
-            self.result.decisions += 1
-            if response is None:
-                self.result.fallbacks += 1
+            asked, missed = self.result.per_seat.get(request.seat, (0, 0))
+            self.result.per_seat[request.seat] = (
+                asked + 1,
+                missed + (1 if response is None else 0),
+            )
         self.transcript.record_decision(
             match_id=self.match_id,
             seat=request.seat,
@@ -468,6 +507,12 @@ class MatchServer:
             if any(int(g.get("game", 0)) == game_no for g in self.result.games):
                 return
             self.result.games.append(payload)
+            # A new game is a new board and a fresh hand. The bridge re-sends
+            # card text for it, and holding the old "already shown" set meant
+            # the daemon swallowed all of it, so from game two an agent played
+            # reading slugs with no rules text.
+            self._shown.clear()
+            self._last_render.clear()
 
         self.transcript.record_game(
             match_id=self.match_id,

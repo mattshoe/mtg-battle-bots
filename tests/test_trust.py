@@ -62,6 +62,7 @@ def _drive(seat: Seat, tmp_path, count: int) -> MatchServer:
         transcript=Transcript(tmp_path / "t.db"),
         decision_timeout=1.0,
     )
+    server.result.expected_seats = {"A"}
     endpoint, _ = server.bind()
     server.start()
     host, port = endpoint.split(":")
@@ -264,3 +265,40 @@ def test_api_failures_are_classified_the_same_way_the_sdk_seat_classifies_them(
     from gauntlet.seats import is_fatal_api_error
 
     assert is_fatal_api_error(message) is fatal
+
+
+def test_a_bridged_seat_that_was_never_asked_anything_is_not_a_result(tmp_path) -> None:
+    """Zero decisions used to read as a perfect run.
+
+    fallback_rate is 0/0, which is 0.0, which passed the threshold. So a bridge
+    that never connected — an unbuilt jar, a seat-name mismatch, a routing list
+    that routed nothing — produced a complete win record with `valid: true` and
+    exit 0. That is the original fictional-result failure with a new cause.
+    """
+    from gauntlet.server import MatchResult
+
+    result = MatchResult(match_id="never-asked")
+    result.expected_seats = {"A"}
+    result.games.append({"game": 1, "winner": "A", "draw": False})
+
+    assert result.decisions == 0
+    assert not result.trustworthy
+    assert "never asked" in result.untrustworthy_because
+
+
+def test_one_dead_seat_is_not_diluted_by_a_healthy_one(tmp_path) -> None:
+    """Counting match-wide let a busy seat hide a silent one.
+
+    Asymmetric --routed is the documented way to make agent runs affordable, so
+    one seat answering ten times as often as the other is the normal shape, and
+    it pushed the dead seat's failures below the match-wide threshold.
+    """
+    from gauntlet.server import MatchResult
+
+    result = MatchResult(match_id="lopsided")
+    result.expected_seats = {"A", "B"}
+    result.per_seat = {"A": (9, 9), "B": (81, 0)}
+
+    assert result.fallback_rate == pytest.approx(0.1)
+    assert not result.trustworthy, "a seat that answered nothing was averaged away"
+    assert "seat A" in result.untrustworthy_because

@@ -207,6 +207,10 @@ def run(
         decision_timeout=float(plan_.decision_timeout),
         budget=budget,
     )
+    # Which seats have a bridge and must therefore be asked something. A
+    # bridged seat that is never asked means the bridge never worked, and
+    # the result is Forge's however good the score looks.
+    server.result.expected_seats = {s.seat for s in plan_.specs if s.controller != "forge"}
     endpoint, _ = server.bind()
     server.start()
 
@@ -286,6 +290,12 @@ def run(
     try:
         code = forge.wait()
         status = "finished"
+        if not forge.drain(timeout=30):
+            # Output Forge printed was never read, so results may be missing
+            # from this record.
+            server.result.error = (
+                "Forge's output was not fully read, some game results may be missing"
+            )
         if code not in (0, None):
             status = "crashed"
             server.result.crashed = True

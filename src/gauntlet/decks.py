@@ -336,6 +336,10 @@ _PRINTING = re.compile(r"\s*\([0-9A-Z]{2,6}\)(?:\s+[\dA-Za-z\-★]+)?\s*$")
 
 _SKIP_SECTIONS = frozenset({"sideboard", "companion"})
 
+#: `Commander: Name` on a single line, which is how Moxfield and Archidekt
+#: export and how most people type it. Distinct from a bare section header.
+_INLINE_COMMANDER = re.compile(r"^\s*commanders?\s*[:\-]\s*(.+?)\s*$", re.IGNORECASE)
+
 
 def from_text(text: str, name: str) -> DeckList:
     """Parse a pasted decklist.
@@ -353,6 +357,20 @@ def from_text(text: str, name: str) -> DeckList:
         line = raw_line.strip()
         if not line or line.startswith("#") or line.startswith("//"):
             continue
+
+        # Checked before the section header, because "Commander: Jetmir" also
+        # matches nothing in _SECTION and would fall through to being a card.
+        inline = _INLINE_COMMANDER.match(line)
+        if inline:
+            named = _PRINTING.sub("", inline.group(1)).strip()
+            # A quantity prefix is legal here too: "Commander: 1 Jetmir".
+            counted = _CARD.match(named)
+            if counted:
+                named = _PRINTING.sub("", counted.group(2)).strip()
+            if named:
+                commanders.append(named)
+                section = "main"
+                continue
 
         header = _SECTION.match(line)
         if header:

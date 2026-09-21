@@ -53,10 +53,29 @@ class ForgeRun:
     _reader: threading.Thread | None = field(default=None, repr=False)
 
     def wait(self, timeout: float | None = None) -> int | None:
+        """Wait for Forge to exit *and* for its output to be fully read.
+
+        The second half matters. The process exiting does not mean the pump has
+        finished with the pipe, and a slow on_line callback dropped results that
+        Forge had already printed, leaving a six-game run reporting one.
+        """
         try:
-            return self.process.wait(timeout=timeout)
+            code = self.process.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             return None
+        self.drain(timeout=timeout)
+        return code
+
+    def drain(self, timeout: float | None = None) -> bool:
+        """Block until every line Forge printed has been handled.
+
+        Returns False if the reader is still going, which means some output was
+        never processed and the run's record is incomplete.
+        """
+        if self._reader is None:
+            return True
+        self._reader.join(timeout if timeout is not None else 30)
+        return not self._reader.is_alive()
 
     @property
     def running(self) -> bool:

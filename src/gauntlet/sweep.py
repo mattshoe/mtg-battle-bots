@@ -81,6 +81,13 @@ def default_workers(agent_seats: int = 0) -> int:
     return max(1, min(free, 4 // agent_seats))
 
 
+def _seat_options(controller: str, model: str) -> dict[str, str]:
+    """Options for a seat of this kind. Only paid seats take a model."""
+    if model and controller in ("api", "sdk"):
+        return {"model": model}
+    return {}
+
+
 def run_pairing(
     pairing: Pairing,
     *,
@@ -91,6 +98,7 @@ def run_pairing(
     owner: str | None = None,
     game_timeout: int = 900,
     decision_timeout: int = 300,
+    model: str = "",
     transcript: Transcript | None = None,
     budget: Budget | None = None,
 ) -> Pairing:
@@ -109,8 +117,21 @@ def run_pairing(
     try:
         planned = matchmod.plan(
             [
-                matchmod.SeatSpec(seat="A", deck=pairing.deck, controller=seat_deck),
-                matchmod.SeatSpec(seat="B", deck=pairing.opponent, controller=seat_opponent),
+                # The model reaches the seats, not just the budget. It used to
+                # price the cap and never be passed on, so a sweep billed one
+                # model's rates and played another's.
+                matchmod.SeatSpec(
+                    seat="A",
+                    deck=pairing.deck,
+                    controller=seat_deck,
+                    options=_seat_options(seat_deck, model),
+                ),
+                matchmod.SeatSpec(
+                    seat="B",
+                    deck=pairing.opponent,
+                    controller=seat_opponent,
+                    options=_seat_options(seat_opponent, model),
+                ),
             ],
             owner=owner,
             game_format=game_format,
@@ -145,10 +166,7 @@ def run_pairing(
     if not result.trustworthy:
         pairing.exhausted = True
         if not pairing.error:
-            pairing.error = (
-                f"{result.fallback_rate:.0%} of decisions fell back to Forge, "
-                "this is not an agent result"
-            )
+            pairing.error = result.untrustworthy_because
     return pairing
 
 
@@ -165,6 +183,7 @@ def run_sweep(
     seat_deck: str = "forge",
     seat_opponent: str = "forge",
     decision_timeout: int = 300,
+    model: str = "",
     budget: Budget | None = None,
     on_done=None,
 ) -> list[Pairing]:
@@ -203,6 +222,7 @@ def run_sweep(
                     seat_deck=seat_deck,
                     seat_opponent=seat_opponent,
                     decision_timeout=decision_timeout,
+                    model=model,
                     transcript=transcript,
                     budget=budget,
                     halt=halt,
