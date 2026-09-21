@@ -24,9 +24,23 @@ from gauntlet.decks import (
     write_dck,
 )
 
-# The collection is optional, so the tests that need it skip when it is absent.
-_DB_DIR = _default_db_dir()
-HAVE_DB = _DB_DIR is not None and (_DB_DIR / CORE_DB).exists()
+
+# Computed lazily, because conftest redirects the collection to a committed
+# fixture for the whole suite and this used to be evaluated at import time,
+# before that happened.
+def _have_real_db() -> bool:
+    import os
+
+    saved = os.environ.pop("GAUNTLET_COLLECTION", None)
+    try:
+        found = _default_db_dir()
+        return found is not None and (found / CORE_DB).exists()
+    finally:
+        if saved is not None:
+            os.environ["GAUNTLET_COLLECTION"] = saved
+
+
+HAVE_DB = _have_real_db()
 needs_db = pytest.mark.skipif(not HAVE_DB, reason="collection database is not mounted")
 
 FORGE_PRECON = (
@@ -278,7 +292,7 @@ def test_validate_catches_a_commander_left_in_main():
 
 
 @needs_db
-def test_list_collection_decks_returns_rows():
+def test_list_collection_decks_returns_rows(real_collection):
     rows = list_collection_decks()
     assert rows
     assert all(r.slug for r in rows)
@@ -286,12 +300,12 @@ def test_list_collection_decks_returns_rows():
 
 
 @needs_db
-def test_list_collection_decks_filters_by_owner():
+def test_list_collection_decks_filters_by_owner(real_collection):
     assert {r.owner for r in list_collection_decks(owner="matt")} == {"matt"}
 
 
 @needs_db
-def test_every_collection_deck_loads_and_exports():
+def test_every_collection_deck_loads_and_exports(real_collection):
     """The commander parser has to survive every row that actually exists."""
     for row in list_collection_decks():
         deck = from_collection(row.slug)
@@ -303,7 +317,7 @@ def test_every_collection_deck_loads_and_exports():
 
 
 @needs_db
-def test_collection_commander_is_not_in_main():
+def test_collection_commander_is_not_in_main(real_collection):
     deck = from_collection("silverquill-influence-precon")
     assert deck.commanders == ("Killian, Decisive Mentor",)
     assert all(name != "Killian, Decisive Mentor" for _, name in deck.main)
@@ -312,21 +326,21 @@ def test_collection_commander_is_not_in_main():
 
 
 @needs_db
-def test_collection_collapses_the_doubled_face_rows():
+def test_collection_collapses_the_doubled_face_rows(real_collection):
     """Three decks store the commander as "X // X", which is not a real card."""
     deck = from_collection("feather-storm")
     assert deck.commanders == ("Jetmir, Nexus of Revels",)
 
 
 @needs_db
-def test_collection_uses_front_face_only_for_adventures_and_modal_cards():
+def test_collection_uses_front_face_only_for_adventures_and_modal_cards(real_collection):
     names = {name for _, name in from_collection("silverquill-influence-precon").main}
     assert "Defacing Duskmage" in names
     assert "Defacing Duskmage // Vandal's Edit" not in names
 
 
 @needs_db
-def test_collection_keeps_both_halves_of_split_and_room_cards():
+def test_collection_keeps_both_halves_of_split_and_room_cards(real_collection):
     assert "Dusk // Dawn" in {name for _, name in from_collection("eternal-might-precon").main}
     assert "Dazzling Theater // Prop Room" in {
         name for _, name in from_collection("feather-storm").main
@@ -337,7 +351,7 @@ def test_collection_keeps_both_halves_of_split_and_room_cards():
     not (HAVE_DB and FORGE_PRECON.exists()),
     reason="needs both the collection database and Forge's bundled precons",
 )
-def test_export_matches_forges_own_precon_card_for_card():
+def test_export_matches_forges_own_precon_card_for_card(real_collection):
     """The one deck that exists on both sides has to come out identical.
 
     Forge's file pins a set on every line and names the deck after its file, so
@@ -363,25 +377,25 @@ def test_export_matches_forges_own_precon_card_for_card():
 
 
 @needs_db
-def test_collection_keeps_single_cards_that_contain_the_word_and():
+def test_collection_keeps_single_cards_that_contain_the_word_and(real_collection):
     assert from_collection("grave-danger-precon").commanders == ("Gisa and Geralf",)
     assert from_collection("jeskai-striker-precon").commanders == ("Shiko and Narset, Unified",)
 
 
 @needs_db
-def test_collection_lookup_by_name_works():
+def test_collection_lookup_by_name_works(real_collection):
     by_slug = from_collection("feather-storm")
     assert from_collection(by_slug.name) == by_slug
 
 
 @needs_db
-def test_collection_unknown_deck_raises():
+def test_collection_unknown_deck_raises(real_collection):
     with pytest.raises(DeckError, match="no deck matching"):
         from_collection("no-such-deck")
 
 
 @needs_db
-def test_collection_decks_are_the_right_size_with_a_commander():
+def test_collection_decks_are_the_right_size_with_a_commander(real_collection):
     for row in list_collection_decks():
         if row.card_count != 100:
             continue
@@ -390,7 +404,7 @@ def test_collection_decks_are_the_right_size_with_a_commander():
 
 
 @needs_db
-def test_validate_flags_a_duplicate_nonbasic():
+def test_validate_flags_a_duplicate_nonbasic(real_collection):
     """Singleton is the rule, and a repeated nonbasic breaks it.
 
     Built here rather than read from the collection. An earlier version asserted

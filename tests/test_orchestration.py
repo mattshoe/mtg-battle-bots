@@ -46,8 +46,12 @@ def _isolated(tmp_path, monkeypatch):
     # function handles, so overriding it here would hide the behaviour.
     monkeypatch.setattr(paths, "match_meta", lambda m: tmp_path / "state" / f"{m}.json")
     monkeypatch.setattr(paths, "forge_version", lambda: "test")
-    monkeypatch.setattr(paths, "bridge_jar", lambda: tmp_path / "bridge.jar")
-    (tmp_path / "bridge.jar").write_text("")
+    # Every jar is faked, so these run on a machine with no Forge install.
+    # Three of them failed in CI for exactly this reason while passing locally.
+    for name in ("bridge_jar", "forge_jar", "gson_jar"):
+        jar = tmp_path / f"{name}.jar"
+        jar.write_text("")
+        monkeypatch.setattr(paths, name, lambda j=jar: j)
     return tmp_path
 
 

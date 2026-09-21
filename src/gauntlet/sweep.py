@@ -68,9 +68,13 @@ def default_workers(agent_seats: int = 0) -> int:
     live model session, so six workers against two agent seats is twelve
     concurrent sessions, which is where rate limiting starts. Back off.
     """
-    if agent_seats:
-        return max(1, min(4, 8 // max(1, agent_seats)))
-    return max(1, min(6, (os.cpu_count() or 2) // 2))
+    free = max(1, min(6, (os.cpu_count() or 2) // 2))
+    if not agent_seats:
+        return free
+    # Never more than the free ceiling. An independent formula here gave a
+    # two-core runner four agent workers against one Forge worker, which is
+    # backwards: an agent pairing costs strictly more than a Forge one.
+    return max(1, min(free, 4 // agent_seats))
 
 
 def run_pairing(
