@@ -12,7 +12,6 @@ game is running.
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
 import threading
 from collections.abc import Iterable, Mapping, Sequence
@@ -112,9 +111,16 @@ CREATE INDEX IF NOT EXISTS events_by_match ON events (match_id, seq);
 
 
 def default_db_path() -> Path:
-    """One file per installation, under XDG_DATA_HOME when the user set it."""
-    root = os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share"
-    return Path(root) / "gauntlet" / "transcripts.db"
+    """One file per installation.
+
+    Delegates to :mod:`gauntlet.paths`, which owns every location this package
+    writes to. Two functions computing the same path is two functions that can
+    disagree, and the one that disagrees silently writes a second database
+    nobody reads.
+    """
+    from . import paths
+
+    return paths.transcripts_db()
 
 
 def _now() -> str:

@@ -232,12 +232,19 @@ def run(
     def on_line(line: str) -> None:
         # Forge prints one result object per game. This is the only channel a
         # match with no bridged seat has, so it cannot be left to the bridges.
-        if '"kind":"game_result"' not in line:
+        #
+        # Matched on the field rather than on an exact substring. The previous
+        # check wanted `"kind":"game_result"` with no space, which held only
+        # because gson happens to emit compact JSON. A formatting change
+        # upstream would have stopped every result being recorded, silently.
+        if "game_result" not in line:
             return
         # A truncated line is possible while Forge is still writing, and the
         # next game's result will arrive intact anyway.
         with contextlib.suppress(ValueError):
-            server.record_game_result(json.loads(line))
+            payload = json.loads(line)
+            if isinstance(payload, dict) and payload.get("kind") == "game_result":
+                server.record_game_result(payload)
 
     forge = engine.launch(cmd, log_path, on_line=on_line, trace=plan_.trace)
     # Now that the process exists, give the server a way to end it. An

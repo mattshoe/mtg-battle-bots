@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import os
+import threading
 import time
 from dataclasses import dataclass, field
 
@@ -75,6 +76,7 @@ def default_workers(agent_seats: int = 0) -> int:
 def run_pairing(
     pairing: Pairing,
     *,
+    halt: threading.Event | None = None,
     seat_deck: str = "forge",
     seat_opponent: str = "forge",
     game_format: str = "Commander",
@@ -89,6 +91,13 @@ def run_pairing(
     The deck under test is always seat A, so a results table never has to
     explain which side it is reporting.
     """
+    if halt is not None and halt.is_set():
+        # An earlier pairing lost its seat. Anything played now would be Forge
+        # wearing an agent's name.
+        pairing.error = "skipped, an earlier pairing ran out of capacity"
+        pairing.exhausted = True
+        return pairing
+
     try:
         planned = matchmod.plan(
             [
@@ -153,6 +162,11 @@ def run_sweep(
     workers = workers or default_workers(agent_seats)
     done: list[Pairing] = []
 
+    # Cancelling a future only works before it starts, and with a worker already
+    # mid-pairing the rest of the sweep ran regardless. A flag every pairing
+    # checks on the way in closes that window.
+    halt = threading.Event()
+
     # One transcript per worker thread is tempting but wrong. The Transcript is
     # already thread safe and a single database keeps a sweep queryable as one
     # thing afterwards.
@@ -171,6 +185,7 @@ def run_sweep(
                     decision_timeout=decision_timeout,
                     transcript=transcript,
                     budget=budget,
+                    halt=halt,
                 ): p
                 for p in pairings
             }
@@ -184,6 +199,7 @@ def run_sweep(
                 # by Forge wearing an agent's name. Cancel the rest rather than
                 # spend hours producing a result that reads as an agent run.
                 if finished.exhausted:
+                    halt.set()
                     for pending in futures:
                         pending.cancel()
                     break

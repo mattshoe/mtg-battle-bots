@@ -27,5 +27,40 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "pytest-timeout>=2.3",
+    "ruff>=0.6",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# No test here should take a second. One that hangs is a bug in the test or in
+# the thing it is testing, and either way it must fail rather than block CI.
+timeout = 60
+markers = [
+    "slow: takes more than a moment, excluded from the default run",
+    "forge: needs a real Forge install, skipped when absent",
+]
+
+[tool.coverage.run]
+source = ["src/gauntlet"]
+branch = true
+
+[tool.coverage.report]
+# Coverage is a floor that only moves up. Lower it and CI fails, which is the
+# point: a change that adds untested code should not be quietly accepted.
+fail_under = 72
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    # Import-time guards for optional dependencies. Exercising them means
+    # uninstalling a package mid-run, which is not worth the machinery.
+    "except ImportError",
+]

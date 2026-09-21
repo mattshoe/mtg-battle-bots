@@ -75,8 +75,32 @@ def transcripts_db() -> Path:
     return data_dir() / "transcripts.db"
 
 
+#: sockaddr_un.sun_path is 104 bytes on macOS and 108 on Linux. Going over it
+#: fails as a bare OSError from bind(), several frames from anything that names
+#: the real problem.
+_SOCKET_PATH_LIMIT = 100
+
+
 def match_socket(match_id: str) -> Path:
-    return state_dir() / f"{match_id}.sock"
+    """Where a match listens for `gauntlet act`.
+
+    Normally beside the rest of the match's state. When that path would be too
+    long for a unix socket, somewhere short instead, because a deep state
+    directory should not be the reason a match cannot start.
+    """
+    natural = state_dir() / f"{match_id}.sock"
+    if len(str(natural).encode()) <= _SOCKET_PATH_LIMIT:
+        return natural
+
+    import tempfile
+
+    short = Path(tempfile.gettempdir()) / f"gauntlet-{match_id}.sock"
+    if len(str(short).encode()) > _SOCKET_PATH_LIMIT:
+        raise OSError(
+            f"no socket path short enough for {match_id}: "
+            f"{natural} and {short} both exceed {_SOCKET_PATH_LIMIT} bytes"
+        )
+    return short
 
 
 def match_meta(match_id: str) -> Path:

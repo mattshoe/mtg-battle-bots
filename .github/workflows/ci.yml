@@ -20,12 +20,15 @@ jobs:
           enable-cache: true
 
       - name: Lint
-        run: uv run --python 3.12 --with ruff ruff check src/ tests/
+        run: uv run --python 3.12 ruff check src/ tests/
 
       - name: Format check
-        run: uv run --python 3.12 --with ruff ruff format --check src/ tests/
+        run: uv run --python 3.12 ruff format --check src/ tests/
 
-      - name: Tests
+      - name: Tests and coverage floor
         # The collection database is not present on a runner, so the tests that
         # need it skip themselves. Everything else runs.
-        run: uv run --python 3.12 --with pytest python -m pytest -q
+        #
+        # The floor only moves up. A change that adds untested code fails here,
+        # which is the point of having it.
+        run: uv run --python 3.12 python -m pytest -q --cov
