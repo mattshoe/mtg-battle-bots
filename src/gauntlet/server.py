@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any
 
 from . import paths
+from .budget import Budget, BudgetExceeded, unlimited
 from .protocol import NOTIFICATIONS, ProtocolError, Request, Response
 from .seats import InteractiveSeat, Seat, SeatExhausted, SeatTimeout
 from .transcript import Transcript
@@ -73,11 +74,15 @@ class MatchServer:
         seats: dict[str, Seat],
         transcript: Transcript,
         decision_timeout: float = 300.0,
+        budget: Budget | None = None,
     ) -> None:
         self.match_id = match_id
         self.seats = seats
         self.transcript = transcript
         self.decision_timeout = decision_timeout
+        #: Every run has one. A run with only free seats gets an unlimited
+        #: one rather than no check at all, so the code path is identical.
+        self.budget = budget if budget is not None else unlimited()
 
         self.result = MatchResult(match_id=match_id)
         self.finished = threading.Event()
@@ -207,6 +212,16 @@ class MatchServer:
         started = time.monotonic()
         self._remember_cards(request)
 
+        # Before dispatching, not after. Checking afterwards means the money is
+        # already spent. A run over budget stops exactly the way an exhausted
+        # seat does, because from the outside it is the same situation: this
+        # seat cannot answer any more questions.
+        try:
+            self.budget.check()
+        except BudgetExceeded as exc:
+            self._halt(request, started, f"budget: {exc}", kind="budget_exceeded")
+            return _defer(request)
+
         if seat is None:
             self._record(request, None, started, f"no seat configured for {request.seat!r}")
             return _defer(request)
@@ -218,17 +233,7 @@ class MatchServer:
             # Every remaining decision for this seat will fail the same way.
             # Falling back silently would finish the run and report Forge's play
             # as the agent's, which is the one thing this harness must never do.
-            self.exhausted[request.seat] = str(exc)
-            self._record(request, None, started, f"seat exhausted: {exc}")
-            self.transcript.record_event(
-                match_id=self.match_id,
-                kind="seat_exhausted",
-                payload={"seat": request.seat, "reason": str(exc)},
-            )
-            self.finished.set()
-            if self.stop_engine is not None:
-                stop, self.stop_engine = self.stop_engine, None
-                threading.Thread(target=stop, name="gauntlet-stop", daemon=True).start()
+            self._halt(request, started, f"seat exhausted: {exc}", kind="seat_exhausted")
             return _defer(request)
         except (SeatTimeout, ProtocolError) as exc:
             self._record(request, None, started, str(exc))
@@ -239,8 +244,37 @@ class MatchServer:
             self._record(request, None, started, f"seat raised {type(exc).__name__}: {exc}")
             return _defer(request)
 
+        usage = getattr(seat, "last_usage", None)
+        self.budget.charge(
+            input_tokens=usage[0] if usage else None,
+            output_tokens=usage[1] if usage else None,
+        )
         self._record(request, response, started, "")
         return response.encode()
+
+    def _halt(self, request: Request, started: float, reason: str, *, kind: str) -> None:
+        """End the run, and make sure the engine hears about it.
+
+        Shared by seat exhaustion and budget exhaustion. Setting a flag is not
+        enough: Forge was told to play N games and will play them, so the
+        process has to be stopped or the rest of the run finishes at 100%
+        fallback and reports as though a seat had played it.
+        """
+        self.exhausted[request.seat] = reason
+        self._record(request, None, started, reason)
+        self.transcript.record_event(
+            match_id=self.match_id,
+            kind=kind,
+            payload={
+                "seat": request.seat,
+                "reason": reason,
+                "budget": self.budget.summary(),
+            },
+        )
+        self.finished.set()
+        if self.stop_engine is not None:
+            stop, self.stop_engine = self.stop_engine, None
+            threading.Thread(target=stop, name="gauntlet-stop", daemon=True).start()
 
     def _remember_cards(self, request: Request) -> None:
         """Keep every card this seat has been told about.

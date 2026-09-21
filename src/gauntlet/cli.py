@@ -18,6 +18,7 @@ from typing import Annotated
 
 import typer
 
+from . import budget as budgetmod
 from . import decks as deckmod
 from . import match as matchmod
 from . import paths, prompt, sweep, transcript
@@ -89,6 +90,43 @@ def export_deck(
     typer.echo(f"{written}  ({resolved.size} cards)")
 
 
+def _preflight(
+    *, games: int, seats: list[str], model: str, max_cost: float, yes: bool
+) -> budgetmod.Budget:
+    """Show what a run will cost before it costs it, and get a yes.
+
+    Two runs have already overrun without anyone noticing until afterwards. The
+    fix is the same in both directions: say the number up front, and enforce it
+    while running.
+    """
+    paid = [k for k in seats if k in ("api", "sdk")]
+    if not paid:
+        # Forge's AI is free. A dollar limit on a run that spends nothing would
+        # only ever stop something it should not.
+        return budgetmod.unlimited()
+
+    decisions, dollars = budgetmod.project(games, model, paid_seats=len(paid))
+    via_key = "api" in paid
+    currency = "billed to your API key" if via_key else "against your Claude Code session"
+
+    typer.echo(f"{games} game(s), {len(paid)} paid seat(s) on {model}")
+    typer.echo(f"  ~{decisions:,} decisions, ~${dollars:.2f} {currency}")
+    if not via_key:
+        typer.echo("  the sdk seat spends session quota, not money, so the dollar")
+        typer.echo("  figure is what it would cost on an API key")
+    typer.echo(f"  hard limit ${max_cost:.2f}, the run stops there")
+
+    if dollars > max_cost:
+        _fail(
+            f"projected ${dollars:.2f} exceeds the ${max_cost:.2f} limit. "
+            f"Raise it with --max-cost, or run fewer games."
+        )
+    if not yes and dollars >= 1.0:
+        typer.confirm("proceed?", abort=True)
+
+    return budgetmod.Budget(max_usd=max_cost, model=model)
+
+
 # --------------------------------------------------------------------- match
 
 
@@ -113,6 +151,10 @@ def run_match(
     decision_timeout: Annotated[int, typer.Option(help="Seconds a seat may think.")] = 300,
     game_timeout: Annotated[int, typer.Option(help="Seconds before a draw is called.")] = 900,
     model: Annotated[str, typer.Option(help="Model for api and sdk seats.")] = "claude-haiku-4-5",
+    max_cost: Annotated[
+        float, typer.Option(help="Hard spend limit in dollars. The run stops there.")
+    ] = budgetmod.DEFAULT_MAX_USD,
+    yes: Annotated[bool, typer.Option("--yes", "-y", help="Skip the cost prompt.")] = False,
     owner: Annotated[str | None, typer.Option(help="Collection owner for deck lookup.")] = None,
     trace: Annotated[bool, typer.Option(help="Log every decision point Forge reaches.")] = False,
     as_json: Annotated[bool, typer.Option("--json")] = False,
@@ -148,6 +190,10 @@ def run_match(
             options=seat_opts(seat_b),
         ),
     ]
+
+    budget = _preflight(
+        games=games, seats=[seat_a, seat_b], model=model, max_cost=max_cost, yes=yes
+    )
 
     try:
         planned = matchmod.plan(
@@ -189,7 +235,7 @@ def run_match(
         )
         return
 
-    result = matchmod.run(planned)
+    result = matchmod.run(planned, budget=budget)
     _emit(
         {
             "match": result.match_id,
@@ -201,6 +247,7 @@ def run_match(
         as_json,
         f"match {result.match_id}: {result.wins_by_seat() or 'no decisive games'}"
         + (f"\n{result.error}" if result.error else "")
+        + (f"\n{budget.report()}" if budget.decisions else "")
         + f"\n\ngauntlet replay {result.match_id}",
     )
 
@@ -334,6 +381,11 @@ def sweep_cmd(
     seat_a: Annotated[str, typer.Option(help="Who plays the deck under test.")] = "forge",
     seat_b: Annotated[str, typer.Option(help="Who plays each opponent.")] = "forge",
     decision_timeout: Annotated[int, typer.Option(help="Seconds a seat may think.")] = 300,
+    model: Annotated[str, typer.Option(help="Model for api and sdk seats.")] = "claude-haiku-4-5",
+    max_cost: Annotated[
+        float, typer.Option(help="Hard spend limit for the whole sweep.")
+    ] = budgetmod.DEFAULT_MAX_USD,
+    yes: Annotated[bool, typer.Option("--yes", "-y", help="Skip the cost prompt.")] = False,
     as_json: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
     """Play one deck against a field of opponents and report win rates.
@@ -368,6 +420,14 @@ def sweep_cmd(
         outcome = pairing.error or f"{pairing.wins}-{pairing.losses}-{pairing.draws}"
         typer.echo(f"  [{done}/{total}] {pairing.opponent}  {outcome}", err=True)
 
+    budget = _preflight(
+        games=games * len(opponents),
+        seats=[seat_a, seat_b],
+        model=model,
+        max_cost=max_cost,
+        yes=yes,
+    )
+
     results, elapsed = sweep.timed_sweep(
         deck,
         opponents,
@@ -380,6 +440,7 @@ def sweep_cmd(
         seat_deck=seat_a,
         seat_opponent=seat_b,
         decision_timeout=decision_timeout,
+        budget=budget,
         on_done=progress,
     )
 
@@ -413,6 +474,8 @@ def sweep_cmd(
     else:
         typer.echo("")
         typer.echo(sweep.format_table(deck, results, elapsed))
+        if budget.decisions:
+            typer.echo(f"\nspent {budget.report()}")
 
 
 # ---------------------------------------------------------------- transcript

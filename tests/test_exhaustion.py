@@ -85,7 +85,9 @@ def test_exhaustion_defers_records_and_ends_the_match(tmp_path) -> None:
 
         # The engine is told to decide for itself rather than left hanging.
         assert reply["choice"] is None
-        assert server.exhausted == {"A": "You've hit your session limit"}
+        # The reason is prefixed with its category, so match on the cause
+        # rather than the exact wording.
+        assert "session limit" in server.exhausted["A"]
         assert server.finished.is_set()
     finally:
         server.shutdown()
@@ -105,5 +107,54 @@ def test_exhaustion_stops_the_engine(tmp_path) -> None:
         while not stopped.is_set() and time.monotonic() < deadline:
             time.sleep(0.02)
         assert stopped.is_set(), "an exhausted seat left Forge running"
+    finally:
+        server.shutdown()
+
+
+def test_budget_stops_the_run_before_it_overspends(tmp_path) -> None:
+    """A run must stop at its limit, and stop the engine while doing it."""
+    from gauntlet.budget import Budget
+
+    class _FreeSeat(Seat):
+        controller = "api"
+        last_usage = (1000, 50)
+
+        def decide(self, request: Request, timeout: float):
+            from gauntlet.protocol import Response
+
+            return Response(id=request.id, choice=0, why="fine")
+
+    tiny = Budget(max_usd=0.005, model="claude-haiku-4-5")
+    server = MatchServer(
+        match_id="budget-test",
+        seats={"A": _FreeSeat()},
+        transcript=Transcript(tmp_path / "b.db"),
+        decision_timeout=2.0,
+        budget=tiny,
+    )
+    stopped = threading.Event()
+    server.stop_engine = stopped.set
+    endpoint, _ = server.bind()
+    server.start()
+    host, port = endpoint.split(":")
+
+    try:
+        with socket.create_connection((host, int(port)), timeout=5) as sock:
+            stream = sock.makefile("rwb")
+            answered = 0
+            for i in range(1, 40):
+                stream.write(WIRE.replace('"id": 1', f'"id": {i}').encode() + b"\n")
+                stream.flush()
+                reply = json.loads(stream.readline())
+                if reply["choice"] is None:
+                    break
+                answered += 1
+
+        assert answered > 0, "the budget stopped the run before it did anything"
+        assert tiny.spent_usd <= tiny.max_usd * 1.5
+        deadline = time.monotonic() + 5
+        while not stopped.is_set() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert stopped.is_set(), "an over-budget run left the engine going"
     finally:
         server.shutdown()

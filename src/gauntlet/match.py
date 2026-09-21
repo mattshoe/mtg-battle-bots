@@ -23,6 +23,7 @@ from typing import Any
 
 from . import decks as deckmod
 from . import engine, paths
+from .budget import Budget
 from .seats import Seat, build_seat
 from .server import MatchResult, MatchServer
 from .transcript import Transcript
@@ -160,7 +161,12 @@ def build_seats(plan_: MatchPlan) -> dict[str, Seat]:
     return seats
 
 
-def run(plan_: MatchPlan, *, transcript: Transcript | None = None) -> MatchResult:
+def run(
+    plan_: MatchPlan,
+    *,
+    transcript: Transcript | None = None,
+    budget: Budget | None = None,
+) -> MatchResult:
     """Run a planned match to completion. Blocks until Forge exits."""
     own_transcript = transcript is None
     transcript = transcript or Transcript()
@@ -171,6 +177,7 @@ def run(plan_: MatchPlan, *, transcript: Transcript | None = None) -> MatchResul
         seats=seats,
         transcript=transcript,
         decision_timeout=float(plan_.decision_timeout),
+        budget=budget,
     )
     endpoint, _ = server.bind()
     server.start()

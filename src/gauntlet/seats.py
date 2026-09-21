@@ -239,6 +239,9 @@ class ApiSeat(Seat):
         self.system = system or DEFAULT_SYSTEM
         self._client = None
         self._seen_cards: dict[str, dict] = {}
+        #: (input, output) tokens from the last call, for the budget. The
+        #: API tells us exactly, so nothing here needs estimating.
+        self.last_usage: tuple[int, int] | None = None
 
     def _ensure_client(self):
         if self._client is None:
@@ -283,6 +286,17 @@ class ApiSeat(Seat):
             if any(m in text for m in ("rate_limit", "quota", "credit balance", "insufficient")):
                 raise SeatExhausted(f"api seat cannot continue: {exc}") from exc
             raise SeatTimeout(f"api call failed: {exc}") from exc
+
+        usage = getattr(message, "usage", None)
+        if usage is not None:
+            # Cache reads bill at a fraction of the input rate, so counting
+            # them at full price overstates the spend. Erring high is the
+            # safe direction for a budget.
+            self.last_usage = (
+                getattr(usage, "input_tokens", 0) + getattr(usage, "cache_read_input_tokens", 0)
+                or 0,
+                getattr(usage, "output_tokens", 0),
+            )
 
         text = "".join(block.text for block in message.content if block.type == "text")
         try:

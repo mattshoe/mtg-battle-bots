@@ -92,6 +92,9 @@ class SdkSeat(Seat):
         self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
         self._closed = False
+        #: The Agent SDK does not report token usage, so the budget falls
+        #: back to its measured per-decision estimate. None means estimate.
+        self.last_usage: tuple[int, int] | None = None
 
     # The SDK is async and Forge's bridge thread is not, so the session lives on
     # a dedicated event loop in its own thread and decisions are handed to it.

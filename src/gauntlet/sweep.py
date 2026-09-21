@@ -18,6 +18,7 @@ import time
 from dataclasses import dataclass, field
 
 from . import match as matchmod
+from .budget import Budget
 from .transcript import Transcript
 
 
@@ -81,6 +82,7 @@ def run_pairing(
     game_timeout: int = 900,
     decision_timeout: int = 300,
     transcript: Transcript | None = None,
+    budget: Budget | None = None,
 ) -> Pairing:
     """Play one pairing to completion and fill in its results.
 
@@ -100,7 +102,7 @@ def run_pairing(
             game_timeout=game_timeout,
             decision_timeout=decision_timeout,
         )
-        result = matchmod.run(planned, transcript=transcript)
+        result = matchmod.run(planned, transcript=transcript, budget=budget)
     except Exception as exc:
         pairing.error = f"{type(exc).__name__}: {exc}"
         return pairing
@@ -134,6 +136,7 @@ def run_sweep(
     seat_deck: str = "forge",
     seat_opponent: str = "forge",
     decision_timeout: int = 300,
+    budget: Budget | None = None,
     on_done=None,
 ) -> list[Pairing]:
     """Play a deck against every opponent, in parallel."""
@@ -167,6 +170,7 @@ def run_sweep(
                     seat_opponent=seat_opponent,
                     decision_timeout=decision_timeout,
                     transcript=transcript,
+                    budget=budget,
                 ): p
                 for p in pairings
             }
