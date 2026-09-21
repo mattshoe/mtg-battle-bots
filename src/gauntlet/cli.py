@@ -112,7 +112,7 @@ def run_match(
     ] = ",".join(matchmod.DEFAULT_ROUTED),
     decision_timeout: Annotated[int, typer.Option(help="Seconds a seat may think.")] = 300,
     game_timeout: Annotated[int, typer.Option(help="Seconds before a draw is called.")] = 900,
-    model: Annotated[str, typer.Option(help="Model for api seats.")] = "claude-sonnet-5",
+    model: Annotated[str, typer.Option(help="Model for api and sdk seats.")] = "claude-haiku-4-5",
     owner: Annotated[str | None, typer.Option(help="Collection owner for deck lookup.")] = None,
     trace: Annotated[bool, typer.Option(help="Log every decision point Forge reaches.")] = False,
     as_json: Annotated[bool, typer.Option("--json")] = False,
@@ -492,6 +492,31 @@ def doctor() -> None:
     typer.echo("storage")
     check("transcripts", lambda: paths.transcripts_db())
     check("state", lambda: paths.state_dir())
+
+    # Seats fail late and confusingly otherwise: a missing key surfaces as a
+    # fallback on every decision, hours into a run.
+    typer.echo("seats")
+    typer.echo("  ok    forge: always available")
+
+    def sdk_seat() -> str:
+        import importlib.util
+
+        if importlib.util.find_spec("claude_agent_sdk") is None:
+            raise RuntimeError("claude-agent-sdk not installed")
+        return "ready, uses Claude Code auth, no key needed"
+
+    def api_seat() -> str:
+        import importlib.util
+        import os
+
+        if importlib.util.find_spec("anthropic") is None:
+            raise RuntimeError("anthropic not installed: uv add anthropic")
+        if not os.environ.get("ANTHROPIC_API_KEY"):
+            raise RuntimeError("ANTHROPIC_API_KEY is not set")
+        return "ready, billed to your API key"
+
+    check("sdk", sdk_seat)
+    check("api", api_seat)
 
     if not ok:
         raise typer.Exit(1)

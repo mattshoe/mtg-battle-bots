@@ -228,7 +228,7 @@ class ApiSeat(Seat):
     def __init__(
         self,
         *,
-        model: str = "claude-sonnet-5",
+        model: str = "claude-haiku-4-5",
         system: str | None = None,
         max_tokens: int = 700,
         deck_note: str = "",
@@ -262,11 +262,26 @@ class ApiSeat(Seat):
             message = client.messages.create(
                 model=self.model,
                 max_tokens=self.max_tokens,
-                system=self.system,
+                # The system prompt is identical on every call and a game makes
+                # hundreds, so it is worth a cache breakpoint. The board state
+                # changes every time and goes after it, uncached.
+                system=[
+                    {
+                        "type": "text",
+                        "text": self.system,
+                        "cache_control": {"type": "ephemeral"},
+                    }
+                ],
                 messages=[{"role": "user", "content": prompt}],
                 timeout=timeout,
             )
         except Exception as exc:
+            # A quota or credit failure is not one bad decision, it is every
+            # remaining one. Say so, so the run stops instead of finishing with
+            # Forge's AI wearing this seat's name.
+            text = str(exc).lower()
+            if any(m in text for m in ("rate_limit", "quota", "credit balance", "insufficient")):
+                raise SeatExhausted(f"api seat cannot continue: {exc}") from exc
             raise SeatTimeout(f"api call failed: {exc}") from exc
 
         text = "".join(block.text for block in message.content if block.type == "text")

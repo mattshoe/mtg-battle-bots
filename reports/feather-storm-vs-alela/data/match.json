@@ -1,0 +1,151 @@
+{
+ "match": "0920-1916-a896",
+ "games": [
+  {
+   "game": 1,
+   "ms": 687122,
+   "turns": 24,
+   "winner": "B",
+   "draw": false
+  },
+  {
+   "game": 2,
+   "ms": 383921,
+   "turns": 15,
+   "winner": "A",
+   "draw": false
+  },
+  {
+   "game": 3,
+   "ms": 585461,
+   "turns": 28,
+   "winner": "A",
+   "draw": false
+  },
+  {
+   "game": 4,
+   "ms": 304094,
+   "turns": 16,
+   "winner": "A",
+   "draw": false
+  },
+  {
+   "game": 5,
+   "ms": 642606,
+   "turns": 22,
+   "winner": "A",
+   "draw": false
+  },
+  {
+   "game": 6,
+   "ms": 200173,
+   "turns": 16,
+   "winner": "A",
+   "draw": false
+  },
+  {
+   "game": 7,
+   "ms": 283293,
+   "turns": 21,
+   "winner": "B",
+   "draw": false
+  },
+  {
+   "game": 8,
+   "ms": 205530,
+   "turns": 18,
+   "winner": "B",
+   "draw": false
+  },
+  {
+   "game": 9,
+   "ms": 428220,
+   "turns": 21,
+   "winner": "A",
+   "draw": false
+  },
+  {
+   "game": 10,
+   "ms": 246573,
+   "turns": 18,
+   "winner": "A",
+   "draw": false
+  },
+  {
+   "game": 11,
+   "ms": 287104,
+   "turns": 20,
+   "winner": "A",
+   "draw": false
+  },
+  {
+   "game": 12,
+   "ms": 135739,
+   "turns": 16,
+   "winner": "A",
+   "draw": false
+  },
+  {
+   "game": 13,
+   "ms": 7033,
+   "turns": 28,
+   "winner": "A",
+   "draw": false
+  },
+  {
+   "game": 14,
+   "ms": 6086,
+   "turns": 23,
+   "winner": "B",
+   "draw": false
+  },
+  {
+   "game": 15,
+   "ms": 1990,
+   "turns": 15,
+   "winner": "A",
+   "draw": false
+  },
+  {
+   "game": 16,
+   "ms": 5198,
+   "turns": 20,
+   "winner": "A",
+   "draw": false
+  },
+  {
+   "game": 17,
+   "ms": 4767,
+   "turns": 20,
+   "winner": "A",
+   "draw": false
+  },
+  {
+   "game": 18,
+   "ms": 2901,
+   "turns": 17,
+   "winner": "B",
+   "draw": false
+  },
+  {
+   "game": 19,
+   "ms": 1905,
+   "turns": 15,
+   "winner": "A",
+   "draw": false
+  },
+  {
+   "game": 20,
+   "ms": 8667,
+   "turns": 30,
+   "winner": "A",
+   "draw": false
+  }
+ ],
+ "wins": {
+  "B": 5,
+  "A": 15
+ },
+ "crashed": false,
+ "error": "seat ran out of capacity mid-run (A: seat is closed, it ran out of capacity earlier; B: seat is closed, it ran out of capacity earlier)"
+}

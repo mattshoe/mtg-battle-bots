@@ -23,6 +23,7 @@ import json
 import socket
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -83,6 +84,10 @@ class MatchServer:
         #: Seats that ran out of capacity, by seat name. Non-empty means the
         #: run's numbers are not what they claim to be.
         self.exhausted: dict[str, str] = {}
+        #: Set by whoever launched the engine. Called once when a seat is
+        #: exhausted, because setting a flag does not stop a JVM that was
+        #: told to play twenty games and is four games in.
+        self.stop_engine: Callable[[], None] | None = None
 
         self._tcp: socket.socket | None = None
         self._ctl: socket.socket | None = None
@@ -221,6 +226,9 @@ class MatchServer:
                 payload={"seat": request.seat, "reason": str(exc)},
             )
             self.finished.set()
+            if self.stop_engine is not None:
+                stop, self.stop_engine = self.stop_engine, None
+                threading.Thread(target=stop, name="gauntlet-stop", daemon=True).start()
             return _defer(request)
         except (SeatTimeout, ProtocolError) as exc:
             self._record(request, None, started, str(exc))

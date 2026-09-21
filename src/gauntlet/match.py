@@ -233,6 +233,9 @@ def run(plan_: MatchPlan, *, transcript: Transcript | None = None) -> MatchResul
             server.record_game_result(json.loads(line))
 
     forge = engine.launch(cmd, log_path, on_line=on_line, trace=plan_.trace)
+    # Now that the process exists, give the server a way to end it. An
+    # exhausted seat has to stop Forge, not just stop answering it.
+    server.stop_engine = forge.stop
     status = "finished"
     try:
         code = forge.wait()

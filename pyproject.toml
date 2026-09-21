@@ -5,6 +5,7 @@ description = "Play Magic: The Gathering games between agents, at speed, with a 
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "anthropic>=1.7.0",
     "claude-agent-sdk>=0.2.157",
     "typer>=0.12",
 ]
