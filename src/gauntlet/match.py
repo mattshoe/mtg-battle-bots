@@ -68,6 +68,11 @@ class MatchPlan:
     decision_timeout: int = 300
     game_timeout: int = 900
     trace: bool = False
+    #: Carried into a detached run. Without it the daemon built its own
+    #: unlimited budget and the cap the user was shown meant nothing.
+    max_usd: float | None = None
+    max_decisions: int | None = None
+    model: str = ""
 
     @property
     def has_interactive(self) -> bool:
@@ -100,6 +105,7 @@ def plan(
     game_timeout: int = 900,
     trace: bool = False,
     match_id: str | None = None,
+    budget: Budget | None = None,
 ) -> MatchPlan:
     """Resolve every deck and write the .dck files Forge will load."""
     match_id = match_id or new_match_id()
@@ -133,7 +139,29 @@ def plan(
         decision_timeout=decision_timeout,
         game_timeout=game_timeout,
         trace=trace,
+        max_usd=budget.max_usd if budget else None,
+        max_decisions=budget.max_decisions if budget else None,
+        model=budget.model if budget else "",
     )
+
+
+def budget_for(plan_: MatchPlan) -> Budget | None:
+    """Rebuild the budget a plan was created with.
+
+    A detached run is a different process, so the limits have to survive the
+    trip through JSON. Returning None for a plan with no limits keeps a
+    Forge-only run free of a cap it does not need.
+    """
+    if plan_.max_usd is None and plan_.max_decisions is None:
+        return None
+    limits: dict[str, object] = {}
+    if plan_.max_usd is not None:
+        limits["max_usd"] = plan_.max_usd
+    if plan_.max_decisions is not None:
+        limits["max_decisions"] = plan_.max_decisions
+    if plan_.model:
+        limits["model"] = plan_.model
+    return Budget(**limits)  # type: ignore[arg-type]
 
 
 def _bridge_revision() -> str:
@@ -327,6 +355,9 @@ def _dump_plan(plan_: MatchPlan) -> Path:
                 "decision_timeout": plan_.decision_timeout,
                 "game_timeout": plan_.game_timeout,
                 "trace": plan_.trace,
+                "max_usd": plan_.max_usd,
+                "max_decisions": plan_.max_decisions,
+                "model": plan_.model,
                 "specs": [
                     {
                         "seat": s.seat,
@@ -385,6 +416,9 @@ def load_plan(path: Path) -> MatchPlan:
         decision_timeout=raw["decision_timeout"],
         game_timeout=raw["game_timeout"],
         trace=raw["trace"],
+        max_usd=raw.get("max_usd"),
+        max_decisions=raw.get("max_decisions"),
+        model=raw.get("model", ""),
     )
 
 

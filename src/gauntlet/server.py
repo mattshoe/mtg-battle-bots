@@ -230,27 +230,48 @@ class MatchServer:
             response = seat.decide(request, self.decision_timeout)
             response.validate_against(request)
         except SeatExhausted as exc:
+            self._charge(seat)
             # Every remaining decision for this seat will fail the same way.
             # Falling back silently would finish the run and report Forge's play
             # as the agent's, which is the one thing this harness must never do.
             self._halt(request, started, f"seat exhausted: {exc}", kind="seat_exhausted")
             return _defer(request)
         except (SeatTimeout, ProtocolError) as exc:
+            # Charged even though the answer was unusable. A reply that came
+            # back badly formatted still cost a call, and a seat failing every
+            # decision would otherwise spend without ever tripping the cap.
+            self._charge(seat)
             self._record(request, None, started, str(exc))
             return _defer(request)
         except Exception as exc:
             # A seat blowing up is a bug in the seat, not a reason to end the
             # game. Log loudly, let Forge play the turn.
+            self._charge(seat)
             self._record(request, None, started, f"seat raised {type(exc).__name__}: {exc}")
             return _defer(request)
 
+        self._charge(seat)
+        self._record(request, response, started, "")
+        return response.encode()
+
+    def _charge(self, seat: Seat | None) -> None:
+        """Bill one decision against the run's budget.
+
+        Called on every path out of a dispatch, not just the successful one. A
+        call that reached the model was paid for whatever came back, and a seat
+        failing on every decision used to spend without the cap ever moving.
+        """
+        if seat is None:
+            return
         usage = getattr(seat, "last_usage", None)
         self.budget.charge(
             input_tokens=usage[0] if usage else None,
             output_tokens=usage[1] if usage else None,
         )
-        self._record(request, response, started, "")
-        return response.encode()
+        # Clear it so the next decision cannot be billed twice at this one's
+        # price if the seat fails before setting a new figure.
+        if hasattr(seat, "last_usage"):
+            seat.last_usage = None
 
     def _halt(self, request: Request, started: float, reason: str, *, kind: str) -> None:
         """End the run, and make sure the engine hears about it.

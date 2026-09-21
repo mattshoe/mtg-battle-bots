@@ -167,11 +167,23 @@ def test_card_text_is_remembered_across_decisions(monkeypatch) -> None:
     assert "cultivate" in seat._seen_cards
 
 
-def test_deciding_on_a_closed_seat_raises_exhausted() -> None:
+def test_a_normally_closed_seat_times_out_rather_than_voiding_the_run() -> None:
+    """Closing at the end of a match is not running out of capacity. Reporting
+    it as exhaustion would mark a finished run void for the wrong reason."""
     seat = SdkSeat()
     seat.close()
-    with pytest.raises(SeatExhausted):
+    with pytest.raises(SeatTimeout):
         seat.decide(_request(), timeout=1)
+
+
+def test_a_seat_closed_by_exhaustion_stays_exhausted(monkeypatch) -> None:
+    seat = _Scripted(["You've hit your session limit"])
+    _patch_ask(monkeypatch, seat)
+    with pytest.raises(SeatExhausted):
+        seat.decide(_request(), timeout=5)
+    seat.close()
+    with pytest.raises(SeatExhausted):
+        seat.decide(_request(id=2), timeout=1)
 
 
 def test_close_is_safe_to_call_twice() -> None:
@@ -243,3 +255,78 @@ def test_concurrent_close_and_decide_do_not_deadlock(monkeypatch) -> None:
         t.join(timeout=5)
         assert not t.is_alive()
     assert not errors, errors
+
+
+# ------------------------------------------- what no phrase list can cover
+
+
+def test_a_reply_with_a_real_answer_is_never_terminal() -> None:
+    """The false positive that killed a healthy run.
+
+    'rate limit' and 'quota' are ordinary Magic words. A reply carrying a
+    parseable CHOICE is a play, whatever its reasoning mentions.
+    """
+    for why in (
+        "Hold up Rate Limit to counter their draw spell.",
+        "Their quota of blockers is spent, so I swing.",
+        "I will not respond to their bluff, I just attack.",
+        "This is the limit of what the session can support on defence.",
+    ):
+        assert not _terminal_reply(f"CHOICE: 1\nWHY: {why}")
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "Claude Code is unable to respond right now. Please try again later.",
+        "I'm sorry, I can't continue with this conversation.",
+        "API Error: 529 overloaded_error",
+        "Error: insufficient credit balance",
+        "401 unauthorized",
+    ],
+)
+def test_real_failure_messages_end_the_seat(reply: str) -> None:
+    """Every one of these was seen in a real run and none was caught by the
+    original marker list, so the run carried on at full fallback."""
+    assert _terminal_reply(reply)
+
+
+def test_repeated_unusable_replies_end_the_seat_whatever_they_say(monkeypatch) -> None:
+    """No phrase list covers every way a session dies. A seat that cannot
+    produce a usable answer several times running is finished regardless."""
+    from gauntlet.sdk_seat import MAX_CONSECUTIVE_FAILURES
+
+    seat = _Scripted(["mumble"] * (MAX_CONSECUTIVE_FAILURES + 1))
+    _patch_ask(monkeypatch, seat)
+
+    for _ in range(MAX_CONSECUTIVE_FAILURES - 1):
+        with pytest.raises(SeatTimeout):
+            seat.decide(_request(), timeout=5)
+
+    with pytest.raises(SeatExhausted, match="in a row"):
+        seat.decide(_request(), timeout=5)
+
+
+def test_one_good_reply_forgives_the_failures_before_it(monkeypatch) -> None:
+    """A formatting slip that recovers must not accumulate toward a shutdown."""
+    from gauntlet.sdk_seat import MAX_CONSECUTIVE_FAILURES
+
+    script = []
+    for _ in range(MAX_CONSECUTIVE_FAILURES - 1):
+        script.append("mumble")
+    script.append("CHOICE: 0\nWHY: recovered")
+    script += ["mumble"] * (MAX_CONSECUTIVE_FAILURES - 1)
+
+    seat = _Scripted(script)
+    _patch_ask(monkeypatch, seat)
+
+    for _ in range(MAX_CONSECUTIVE_FAILURES - 1):
+        with pytest.raises(SeatTimeout):
+            seat.decide(_request(), timeout=5)
+    assert seat.decide(_request(), timeout=5).choice == 0
+
+    # The counter reset, so the next run of failures starts from zero.
+    for _ in range(MAX_CONSECUTIVE_FAILURES - 1):
+        with pytest.raises(SeatTimeout):
+            seat.decide(_request(), timeout=5)
+    assert not seat._exhausted

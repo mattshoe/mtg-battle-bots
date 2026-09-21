@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import re
 import threading
 from typing import Any
 
@@ -26,6 +27,11 @@ from .protocol import ProtocolError, Request, Response
 from .seats import Seat, SeatExhausted, SeatTimeout
 
 DEFAULT_MODEL = "claude-haiku-4-5-20251001"
+
+#: Unusable replies in a row before a seat is called finished. Three is far
+#: enough from a one-off formatting slip, and cheap enough that a genuinely
+#: dead session costs three calls rather than a thousand.
+MAX_CONSECUTIVE_FAILURES = 3
 
 SYSTEM = """You are playing a game of Magic: The Gathering, to win.
 
@@ -43,26 +49,60 @@ reasoning is read afterwards by someone working out why the deck won or lost, so
 say what you are playing for, not what the card does."""
 
 
-#: Replies that mean the seat is done for good rather than confused about one
-#: question. Every one of these was observed in a real run that then spent two
-#: and a half hours falling back to Forge on every single decision and
-#: reporting the result as though agents had played it.
-_TERMINAL_MARKERS = (
+#: A well-formed answer, which makes a reply a play rather than a failure.
+_CHOICE_LINE = re.compile(r"^\s*CHOICE\s*:\s*\d+", re.MULTILINE | re.IGNORECASE)
+
+#: Phrases that mean this seat is finished, not merely confused.
+#:
+#: Every one was seen in a real run. They are matched only against a reply that
+#: carries no usable answer, because "rate limit" and "quota" appear in ordinary
+#: Magic reasoning and an earlier version killed healthy runs on them.
+_TERMINAL_PATTERNS = (
     "session limit",
     "usage limit",
     "rate limit",
+    "rate_limit",
     "quota",
+    "credit balance",
+    "insufficient",
+    "unable to respond",
+    "cannot continue",
+    "can't continue",
     "will not respond",
     "no further responses",
+    "overloaded_error",
+    "service unavailable",
+    "authentication",
+    "unauthorized",
 )
 
 
 def _terminal_reply(text: str) -> str:
-    """Whether a reply means this seat can no longer play at all."""
-    lowered = text.lower()
-    for marker in _TERMINAL_MARKERS:
+    """Whether a reply means this seat can no longer play at all.
+
+    Only consulted once a reply has failed to parse. A well-formed answer is
+    never terminal no matter what words its reasoning contains, which is what
+    stops "hold up Rate Limit to counter their draw spell" from ending a run
+    that had hours of capacity left.
+    """
+    # A reply carrying a real answer is never terminal, whatever its reasoning
+    # mentions. decide() only calls this after parsing failed, but a function
+    # that is safe only because of where it is called breaks the first time
+    # somebody calls it somewhere else.
+    if _CHOICE_LINE.search(text):
+        return ""
+
+    stripped = text.strip()
+    if not stripped:
+        # Ambiguous alone. One empty reply is a blip, a run of them is a dead
+        # session, and the consecutive-failure guard in decide() tells them
+        # apart without this function having to guess.
+        return ""
+
+    lowered = stripped.lower()
+    for marker in _TERMINAL_PATTERNS:
         if marker in lowered:
-            return " ".join(text.split())[:200]
+            return " ".join(stripped.split())[:200]
     return ""
 
 
@@ -92,6 +132,17 @@ class SdkSeat(Seat):
         self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
         self._closed = False
+        #: Distinct from _closed. A seat closed at end of match is fine to
+        #: reuse conceptually, one that ran out of capacity is not, and the
+        #: two used to share a flag so close() skipped its own cleanup.
+        self._exhausted = False
+        #: Released by close(), so shutdown can tell whether it ran.
+        self._released = False
+        #: Unusable replies in a row. No phrase list can name every way a
+        #: session dies, and the one that got through said only "unable to
+        #: respond right now". A seat that cannot produce a usable answer
+        #: several times running is finished whatever it said.
+        self._consecutive_failures = 0
         #: The Agent SDK does not report token usage, so the budget falls
         #: back to its measured per-decision estimate. None means estimate.
         self.last_usage: tuple[int, int] | None = None
@@ -157,7 +208,9 @@ class SdkSeat(Seat):
     def decide(self, request: Request, timeout: float) -> Response:
         with self._lock:
             if self._closed:
-                raise SeatExhausted("seat is closed, it ran out of capacity earlier")
+                if self._exhausted:
+                    raise SeatExhausted("seat ran out of capacity earlier")
+                raise SeatTimeout("seat is closed")
             loop = self._ensure_loop()
 
         self._seen_cards.update(request.new_cards)
@@ -172,24 +225,39 @@ class SdkSeat(Seat):
         except Exception as exc:
             raise SeatTimeout(f"sdk call failed: {type(exc).__name__}: {exc}") from exc
 
-        blocker = _terminal_reply(text)
-        if blocker:
-            # Mark the seat closed so the next decision fails immediately
-            # instead of paying the round trip to be told the same thing.
-            with self._lock:
-                self._closed = True
-            raise SeatExhausted(blocker)
-
         try:
             choice, why = parse_reply(text, request)
         except ProtocolError as exc:
+            with self._lock:
+                self._consecutive_failures += 1
+                run_length = self._consecutive_failures
+            # Only now ask whether this was a dead session rather than a badly
+            # formatted answer. Checking first meant a perfectly good reply
+            # whose reasoning mentioned a rate limit ended the run.
+            blocker = _terminal_reply(text)
+            if not blocker and run_length >= MAX_CONSECUTIVE_FAILURES:
+                blocker = (
+                    f"{run_length} unusable replies in a row, last was "
+                    f"{' '.join(text.split())[:120]!r}"
+                )
+            if blocker:
+                # Closed so the next decision fails immediately rather than
+                # paying a round trip to be told the same thing.
+                with self._lock:
+                    self._closed = True
+                    self._exhausted = True
+                raise SeatExhausted(blocker) from exc
             raise SeatTimeout(f"unusable reply: {exc}") from exc
+
+        with self._lock:
+            self._consecutive_failures = 0
         return Response(id=request.id, choice=choice, why=why)
 
     def close(self) -> None:
         with self._lock:
-            if self._closed:
+            if self._released:
                 return
+            self._released = True
             self._closed = True
             loop, client = self._loop, self._client
 

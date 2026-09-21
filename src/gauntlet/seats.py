@@ -216,6 +216,32 @@ class InteractiveSeat(Seat):
             pending.answered.set()
 
 
+def _int(value: object) -> int:
+    """A token count that may be absent, None, or a number.
+
+    The SDK sends `cache_read_input_tokens=None` when caching is not in play,
+    and getattr only defaults on a *missing* attribute. `100 + None` raised
+    outside the API try block, so a call that was billed got recorded as a
+    fallback and the budget never saw the money.
+    """
+    return value if isinstance(value, int) else 0
+
+
+def _usage_of(message: object) -> tuple[int, int] | None:
+    """(input, output) tokens for one call, or None when unavailable.
+
+    Cache reads bill at a fraction of the input rate, so counting them at full
+    price overstates the spend. Erring high is the safe direction for a cap.
+    """
+    usage = getattr(message, "usage", None)
+    if usage is None:
+        return None
+    read_in = _int(getattr(usage, "input_tokens", 0))
+    cached = _int(getattr(usage, "cache_read_input_tokens", 0))
+    created = _int(getattr(usage, "cache_creation_input_tokens", 0))
+    return (read_in + cached + created, _int(getattr(usage, "output_tokens", 0)))
+
+
 class ApiSeat(Seat):
     """A seat played by the Claude API.
 
@@ -287,16 +313,7 @@ class ApiSeat(Seat):
                 raise SeatExhausted(f"api seat cannot continue: {exc}") from exc
             raise SeatTimeout(f"api call failed: {exc}") from exc
 
-        usage = getattr(message, "usage", None)
-        if usage is not None:
-            # Cache reads bill at a fraction of the input rate, so counting
-            # them at full price overstates the spend. Erring high is the
-            # safe direction for a budget.
-            self.last_usage = (
-                getattr(usage, "input_tokens", 0) + getattr(usage, "cache_read_input_tokens", 0)
-                or 0,
-                getattr(usage, "output_tokens", 0),
-            )
+        self.last_usage = _usage_of(message)
 
         text = "".join(block.text for block in message.content if block.type == "text")
         try:

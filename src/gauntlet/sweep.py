@@ -119,9 +119,12 @@ def run_pairing(
     pairing.match_id = result.match_id
     for game in result.games:
         pairing.turns.append(int(game.get("turns", 0)))
-        if game.get("draw"):
+        winner = game.get("winner")
+        if game.get("draw") or winner is None:
+            # No winner and not a draw means the game did not finish, which is
+            # not a loss. Counting it as one quietly depressed every win rate.
             pairing.draws += 1
-        elif game.get("winner") == "A":
+        elif winner == "A":
             pairing.wins += 1
         else:
             pairing.losses += 1

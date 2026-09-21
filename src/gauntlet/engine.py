@@ -119,8 +119,10 @@ def build_command(
         cmd += ["--deck", f"{s.seat}={s.deck_path}"]
         if s.bridge_endpoint:
             cmd += ["--bridge", f"{s.seat}={s.bridge_endpoint}"]
-            if s.routed_kinds:
-                cmd += ["--routed", f"{s.seat}={','.join(s.routed_kinds)}"]
+            # Always sent, even when empty. Omitting it let GauntletMain fall
+            # back to its own default, so a seat asked to route nothing routed
+            # everything, which is the opposite of what the caller said.
+            cmd += ["--routed", f"{s.seat}={','.join(s.routed_kinds)}"]
     return cmd
 
 
@@ -163,7 +165,15 @@ def launch(
                 handle.write(line + "\n")
                 handle.flush()
                 if on_line is not None:
-                    on_line(line)
+                    # Guarded. This thread's real job is draining the pipe, and
+                    # if it dies Forge blocks on a full buffer and the match
+                    # hangs forever. A callback that raises must cost its own
+                    # line, not the run.
+                    try:
+                        on_line(line)
+                    except Exception as exc:
+                        handle.write(f"[gauntlet] on_line failed: {exc!r}\n")
+                        handle.flush()
         finally:
             handle.close()
 

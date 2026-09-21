@@ -150,8 +150,14 @@ def test_budget_stops_the_run_before_it_overspends(tmp_path) -> None:
                     break
                 answered += 1
 
+        # A cap that permits a 50% overrun is not a cap. One decision may
+        # cross the line, because the check runs before the spend, but the run
+        # must stop there rather than drift past it.
         assert answered > 0, "the budget stopped the run before it did anything"
-        assert tiny.spent_usd <= tiny.max_usd * 1.5
+        one_decision = 1000 / 1e6 * 1.0 + 50 / 1e6 * 5.0
+        assert tiny.spent_usd <= tiny.max_usd + one_decision, (
+            f"overran the cap: spent {tiny.spent_usd} against {tiny.max_usd}"
+        )
         deadline = time.monotonic() + 5
         while not stopped.is_set() and time.monotonic() < deadline:
             time.sleep(0.02)

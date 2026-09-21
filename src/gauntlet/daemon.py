@@ -14,7 +14,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from .match import load_plan, run
+from .match import budget_for, load_plan, run
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -25,8 +25,10 @@ def main(argv: list[str] | None = None) -> int:
 
     plan_path = Path(args[0])
     plan = load_plan(plan_path)
+    # The cap the user was shown at launch. Without this the detached run
+    # is uncapped, which is the whole two-agent mode.
     try:
-        result = run(plan)
+        result = run(plan, budget=budget_for(plan))
     finally:
         # The plan file is scaffolding. Leaving it behind makes a stale match
         # look live to anything listing the state directory.

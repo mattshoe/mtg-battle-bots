@@ -225,6 +225,7 @@ def run_match(
             decision_timeout=decision_timeout,
             game_timeout=game_timeout,
             trace=trace,
+            budget=budget,
         )
     except Exception as exc:
         _fail(str(exc))
@@ -653,5 +654,8 @@ def _parse_routed(spec: str) -> dict[str, tuple[str, ...]]:
         else:
             default = kinds
 
-    out["*"] = default if default is not None else tuple(matchmod.DEFAULT_ROUTED)
+    # An empty string means the caller said nothing at all, so the default
+    # applies. `--routed ""` cannot be told from an unset flag at this layer,
+    # and defaulting is the safer of the two readings.
+    out["*"] = default if default else tuple(matchmod.DEFAULT_ROUTED)
     return out

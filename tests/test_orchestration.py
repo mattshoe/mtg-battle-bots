@@ -144,17 +144,28 @@ def test_has_interactive_detects_any_interactive_seat(_isolated, deck_file) -> N
     assert planned("interactive", "interactive").has_interactive
 
 
-def test_resolve_deck_prefers_a_real_path_over_a_collection_name(_isolated, deck_file) -> None:
+def test_resolve_deck_prefers_a_real_path_over_a_collection_name(
+    _isolated, deck_file, monkeypatch
+) -> None:
+    """A path that exists wins, because somebody who typed a path meant it.
+
+    The previous version asserted an `or` of two things that were both true and
+    never set up a collection deck to lose to, so it tested nothing.
+    """
+    from gauntlet import decks as deckmod
+
+    def collection_would_answer(name, **kw):
+        raise AssertionError(f"went to the collection for {name!r} despite a real file")
+
+    monkeypatch.setattr(deckmod, "from_collection", collection_would_answer)
     resolved = matchmod.resolve_deck(str(deck_file))
-    assert resolved.source.startswith("text") or "testdeck" in resolved.name
+    assert "testdeck" in resolved.name
 
 
 def test_resolve_deck_reads_a_dck_without_reparsing_it(_isolated, tmp_path) -> None:
     dck = tmp_path / "ready.dck"
     dck.write_text(
-        "[metadata]\nName=Ready\n"
-        "[Commander]\n1 Jetmir, Nexus of Revels\n"
-        "[Main]\n99 Plains\n"
+        "[metadata]\nName=Ready\n[Commander]\n1 Jetmir, Nexus of Revels\n[Main]\n99 Plains\n"
     )
     resolved = matchmod.resolve_deck(str(dck))
     assert resolved.commanders == ("Jetmir, Nexus of Revels",)
@@ -277,10 +288,18 @@ def test_win_rate_of_a_pairing_that_never_finished_is_not_a_crash() -> None:
 
 def test_worker_count_drops_when_seats_cost_money() -> None:
     """Forge workers are bounded by memory. Agent workers are bounded by how
-    many live model sessions upstream will tolerate, which is fewer."""
-    assert sweepmod.default_workers(0) >= sweepmod.default_workers(1)
-    assert sweepmod.default_workers(2) <= 4
-    assert sweepmod.default_workers(2) >= 1
+    many live model sessions upstream will tolerate, which is fewer.
+
+    Asserted as a strict drop rather than a range, because the previous version
+    passed for a function returning any constant.
+    """
+    free = sweepmod.default_workers(0)
+    one_paid = sweepmod.default_workers(1)
+    two_paid = sweepmod.default_workers(2)
+
+    assert free > two_paid, "paid seats must reduce concurrency, not merely cap it"
+    assert one_paid >= two_paid, "two paid seats per pairing is twice the sessions"
+    assert two_paid >= 1, "a sweep with agents must still make progress"
 
 
 def test_the_table_warns_when_a_seat_ran_out_mid_sweep() -> None:
@@ -329,9 +348,7 @@ def test_a_sweep_stops_at_the_first_exhausted_pairing(_isolated, monkeypatch) ->
         return p
 
     monkeypatch.setattr(sweepmod, "run_pairing", fake_pairing)
-    results = sweepmod.run_sweep(
-        "d", ["first", "second", "third", "fourth"], games=1, workers=1
-    )
+    results = sweepmod.run_sweep("d", ["first", "second", "third", "fourth"], games=1, workers=1)
 
     assert "second" in played
     # Whether a later pairing was cancelled before starting or refused on the

@@ -52,8 +52,19 @@ def test_bare_invocation_shows_help_rather_than_doing_something() -> None:
 
 @pytest.mark.parametrize(
     "command",
-    ["decks", "export", "run", "act", "status", "stop", "sweep", "matches", "replay",
-     "summary", "doctor"],
+    [
+        "decks",
+        "export",
+        "run",
+        "act",
+        "status",
+        "stop",
+        "sweep",
+        "matches",
+        "replay",
+        "summary",
+        "doctor",
+    ],
 )
 def test_every_command_has_help(command: str) -> None:
     result = runner.invoke(app, [command, "--help"])
@@ -69,8 +80,19 @@ def test_a_paid_run_without_a_terminal_refuses(_isolated, deck_file) -> None:
     refuse rather than hang, and it must not start anything."""
     result = runner.invoke(
         app,
-        ["run", "--a", str(deck_file), "--b", str(deck_file),
-         "--seat-a", "sdk", "--seat-b", "sdk", "--games", "10"],
+        [
+            "run",
+            "--a",
+            str(deck_file),
+            "--b",
+            str(deck_file),
+            "--seat-a",
+            "sdk",
+            "--seat-b",
+            "sdk",
+            "--games",
+            "10",
+        ],
     )
     assert result.exit_code != 0
     assert "no terminal" in result.output
@@ -79,8 +101,20 @@ def test_a_paid_run_without_a_terminal_refuses(_isolated, deck_file) -> None:
 def test_a_run_over_the_cap_refuses_even_with_yes(_isolated, deck_file) -> None:
     result = runner.invoke(
         app,
-        ["run", "--a", str(deck_file), "--b", str(deck_file),
-         "--seat-a", "api", "--seat-b", "api", "--games", "500", "--yes"],
+        [
+            "run",
+            "--a",
+            str(deck_file),
+            "--b",
+            str(deck_file),
+            "--seat-a",
+            "api",
+            "--seat-b",
+            "api",
+            "--games",
+            "500",
+            "--yes",
+        ],
     )
     assert result.exit_code != 0
     assert "over the" in result.output
@@ -90,8 +124,20 @@ def test_a_run_over_the_cap_refuses_even_with_yes(_isolated, deck_file) -> None:
 def test_the_projection_is_shown_before_anything_runs(_isolated, deck_file) -> None:
     result = runner.invoke(
         app,
-        ["run", "--a", str(deck_file), "--b", str(deck_file),
-         "--seat-a", "sdk", "--seat-b", "sdk", "--games", "500", "--yes"],
+        [
+            "run",
+            "--a",
+            str(deck_file),
+            "--b",
+            str(deck_file),
+            "--seat-a",
+            "sdk",
+            "--seat-b",
+            "sdk",
+            "--games",
+            "500",
+            "--yes",
+        ],
     )
     assert "decisions" in result.output
     assert "HARD CAP" in result.output
@@ -100,8 +146,20 @@ def test_the_projection_is_shown_before_anything_runs(_isolated, deck_file) -> N
 def test_a_sweep_over_the_cap_refuses(_isolated) -> None:
     result = runner.invoke(
         app,
-        ["sweep", "--deck", "x", "--against", "a,b,c", "--games", "50",
-         "--seat-a", "api", "--seat-b", "api", "--yes"],
+        [
+            "sweep",
+            "--deck",
+            "x",
+            "--against",
+            "a,b,c",
+            "--games",
+            "50",
+            "--seat-a",
+            "api",
+            "--seat-b",
+            "api",
+            "--yes",
+        ],
     )
     assert result.exit_code != 0
     assert "over the" in result.output
@@ -114,8 +172,19 @@ def test_an_unknown_decision_kind_is_refused_with_the_known_ones(_isolated, deck
     """A typo here routes nothing and looks like a slow agent hours later."""
     result = runner.invoke(
         app,
-        ["run", "--a", str(deck_file), "--b", str(deck_file),
-         "--seat-a", "forge", "--seat-b", "forge", "--routed", "cast_or_pass,typo"],
+        [
+            "run",
+            "--a",
+            str(deck_file),
+            "--b",
+            str(deck_file),
+            "--seat-a",
+            "forge",
+            "--seat-b",
+            "forge",
+            "--routed",
+            "cast_or_pass,typo",
+        ],
     )
     assert result.exit_code != 0
     assert "typo" in result.output
@@ -125,8 +194,17 @@ def test_an_unknown_decision_kind_is_refused_with_the_known_ones(_isolated, deck
 def test_a_missing_deck_fails_before_starting_anything(_isolated) -> None:
     result = runner.invoke(
         app,
-        ["run", "--a", "no-such-deck-anywhere", "--b", "also-missing",
-         "--seat-a", "forge", "--seat-b", "forge"],
+        [
+            "run",
+            "--a",
+            "no-such-deck-anywhere",
+            "--b",
+            "also-missing",
+            "--seat-a",
+            "forge",
+            "--seat-b",
+            "forge",
+        ],
     )
     assert result.exit_code != 0
 

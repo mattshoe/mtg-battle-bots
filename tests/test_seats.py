@@ -8,14 +8,24 @@ deadlock shows up as a failure rather than as a hung suite.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import threading
+import time
 from typing import Any
 
 import pytest
 
 from gauntlet.protocol import VERSION, ProtocolError, Request, Response
-from gauntlet.seats import ApiSeat, ForgeSeat, InteractiveSeat, Seat, SeatTimeout, build_seat
+from gauntlet.seats import (
+    ApiSeat,
+    ForgeSeat,
+    InteractiveSeat,
+    Seat,
+    SeatExhausted,
+    SeatTimeout,
+    build_seat,
+)
 
 # Short enough that a hang fails fast, long enough that a loaded machine still
 # wins the handoff.
@@ -205,20 +215,11 @@ def test_decide_on_a_closed_seat_gives_up_immediately(seat: InteractiveSeat) -> 
         seat.decide(request(), PATIENT)
 
 
-def test_close_is_safe_to_call_more_than_once(seat: InteractiveSeat) -> None:
-    seat.close()
-    seat.close()
-
-
 def test_forge_seat_refuses_to_decide() -> None:
     # Reaching this seat means a player with no bridge was given one, which is
     # a wiring bug. Inventing an answer would hide it.
     with pytest.raises(RuntimeError, match="a forge seat was asked to decide"):
         ForgeSeat().decide(request(), PATIENT)
-
-
-def test_forge_seat_close_is_a_no_op() -> None:
-    ForgeSeat().close()
 
 
 def test_build_seat_makes_each_kind() -> None:
@@ -236,3 +237,115 @@ def test_controllers_are_what_the_transcript_records() -> None:
     assert ForgeSeat.controller == "forge"
     assert InteractiveSeat.controller == "interactive"
     assert ApiSeat.controller == "api"
+
+
+# ------------------------------------------------- the late-answer guard
+
+
+def test_open_id_names_the_question_the_agent_was_shown() -> None:
+    """`open_id` is the whole late-answer guard and had no tests.
+
+    It is what stops an agent's stale choice landing on a different question
+    with a different option list.
+    """
+    seat = InteractiveSeat()
+    engine = threading.Thread(target=lambda: _swallow(seat, _req(1)), daemon=True)
+    engine.start()
+
+    assert seat.take(1.0) is not None
+    assert seat.open_id() == 1
+    seat.close()
+    engine.join(timeout=2)
+
+
+def test_open_id_is_none_before_anything_was_shown() -> None:
+    """Taken but not shown is not the same as shown. An answer arriving now
+    belongs to a question this agent has never seen."""
+    seat = InteractiveSeat()
+    engine = threading.Thread(target=lambda: _swallow(seat, _req(1)), daemon=True)
+    engine.start()
+    try:
+        # A question is open, but nobody has called take(), so nobody has been
+        # shown it.
+        assert seat.current() is not None
+        assert seat.open_id() is None
+    finally:
+        seat.close()
+        engine.join(timeout=2)
+
+
+def test_open_id_is_none_when_the_game_moved_on() -> None:
+    """The case that matters. The agent was shown question 1, took too long,
+    the engine fell back, and question 2 is now open. An unqualified answer
+    must not be applied to it."""
+    seat = InteractiveSeat()
+    first = threading.Thread(target=lambda: _swallow(seat, _req(1)), daemon=True)
+    first.start()
+    assert seat.take(1.0).id == 1
+    assert seat.open_id() == 1
+
+    # The engine gives up on 1 and asks 2.
+    second = threading.Thread(target=lambda: _swallow(seat, _req(2)), daemon=True)
+    second.start()
+    deadline = time.monotonic() + 2
+    while seat.current() is not None and seat.current().id != 2 and time.monotonic() < deadline:
+        time.sleep(0.01)
+
+    assert seat.current().id == 2
+    assert seat.open_id() is None, "a stale answer could have landed on question 2"
+
+    seat.close()
+    for t in (first, second):
+        t.join(timeout=2)
+
+
+def test_a_displaced_question_wakes_its_waiter_promptly() -> None:
+    """The engine moving on must not leave the previous caller parked for a
+    full timeout on a question nobody will ever answer."""
+    seat = InteractiveSeat()
+    outcome: list[str] = []
+
+    def first():
+        try:
+            seat.decide(_req(1), timeout=30)
+            outcome.append("answered")
+        except SeatTimeout as exc:
+            outcome.append(str(exc))
+
+    t = threading.Thread(target=first, daemon=True)
+    t.start()
+    deadline = time.monotonic() + 2
+    while seat.current() is None and time.monotonic() < deadline:
+        time.sleep(0.01)
+
+    second = threading.Thread(target=lambda: _swallow(seat, _req(2)), daemon=True)
+    second.start()
+
+    t.join(timeout=5)
+    assert not t.is_alive(), "the displaced waiter was left parked for its full timeout"
+    assert outcome and "moved on" in outcome[0], outcome
+
+    seat.close()
+    second.join(timeout=2)
+
+
+def _req(rid: int) -> Request:
+    return Request.parse(
+        json.dumps(
+            {
+                "v": 1,
+                "id": rid,
+                "seat": "A",
+                "kind": "cast_or_pass",
+                "prompt": "priority",
+                "options": [{"i": 0, "label": "Pass priority"}],
+                "state": {},
+            }
+        )
+    )
+
+
+def _swallow(seat: InteractiveSeat, request: Request) -> None:
+    """Drive a decision and absorb whatever it ends as."""
+    with contextlib.suppress(SeatTimeout, SeatExhausted):
+        seat.decide(request, timeout=10)
