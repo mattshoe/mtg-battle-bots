@@ -265,21 +265,44 @@ def test_the_decision_ceiling_fires_independently_of_dollars() -> None:
         b.check()
 
 
-def test_concurrent_reservations_cannot_all_pass_one_slot() -> None:
-    """What reservations exist for, and what no test drove.
+def test_an_unbilled_reservation_still_counts_against_the_cap() -> None:
+    """Deterministic, so it cannot pass on timing.
 
-    check() and charge() used to be separate critical sections with a model
-    call in between, so every worker in a sweep passed a cap one of them had
-    room for.
+    A decision in flight has not been billed yet, and if the cap only looks at
+    billed spend then every worker in a sweep passes it at once. Three
+    reservations fit, the fourth must not.
+    """
+    from gauntlet.budget import Budget, BudgetExceeded, estimate_usd
+
+    model = "claude-haiku-4-5"
+    b = Budget(max_usd=estimate_usd(1, model) * 3, model=model)
+
+    for _ in range(3):
+        b.reserve()
+    assert b.in_flight == 3
+    assert b.spent_usd == 0.0, "nothing has been billed yet, which is the point"
+
+    with pytest.raises(BudgetExceeded):
+        b.reserve()
+
+
+def test_concurrent_reservations_cannot_all_pass_one_slot() -> None:
+    """The same property under real threads.
+
+    An earlier version ran sixteen threads against a cap that only binds above
+    thirty-one, so both its assertions held whether reservations existed or not.
     """
     import threading
 
-    from gauntlet.budget import Budget, BudgetExceeded
+    from gauntlet.budget import Budget, BudgetExceeded, estimate_usd
 
-    b = Budget(max_usd=0.05, model="claude-haiku-4-5")
+    model = "claude-haiku-4-5"
+    b = Budget(max_usd=estimate_usd(1, model) * 3, model=model)
+
     passed: list[int] = []
     lock = threading.Lock()
     ready = threading.Barrier(16)
+    release = threading.Event()
 
     def worker() -> None:
         ready.wait(timeout=5)
@@ -289,20 +312,25 @@ def test_concurrent_reservations_cannot_all_pass_one_slot() -> None:
             return
         with lock:
             passed.append(1)
+        # Hold the reservation until every thread has tried, so the test is
+        # about the cap rather than about who finished first.
+        release.wait(timeout=5)
         b.charge(input_tokens=1030, output_tokens=60)
 
     threads = [threading.Thread(target=worker) for _ in range(16)]
     for t in threads:
         t.start()
+    deadline = time.monotonic() + 5
+    while len(passed) + 0 < 3 and time.monotonic() < deadline:
+        time.sleep(0.01)
+    time.sleep(0.2)
+    holding = len(passed)
+    release.set()
     for t in threads:
         t.join(timeout=10)
 
-    # Every reservation is priced, so the cap bounds how many can be held at
-    # once. Without reservations all sixteen passed.
+    assert holding <= 4, f"{holding} of 16 threads passed a cap with room for three"
     assert passed, "nobody got through at all"
-    assert b.committed_usd <= b.max_usd * 1.1, (
-        f"sixteen concurrent reservations overran the cap: {b.committed_usd}"
-    )
 
 
 def test_a_reservation_is_released_when_the_decision_is_billed() -> None:

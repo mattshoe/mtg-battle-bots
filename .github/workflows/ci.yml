@@ -38,3 +38,51 @@ jobs:
         # with the words "Required test coverage not reached" in its log.
         # A gate that reports failure and passes is worse than no gate.
         run: uv run --python 3.12 python -m pytest -q --cov --cov-fail-under=88
+
+  # The Java half decides which questions leave the JVM, builds every option
+  # list, and is the only real defence of the hidden-information invariant. It
+  # was verified by someone building it locally, which is not verification.
+  #
+  # Forge is a 300 MB download, so it is cached on its pinned version. A cache
+  # miss costs a few minutes once per version bump.
+  java:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Read the pinned Forge version
+        id: pin
+        run: |
+          version=$(grep -oE 'FORGE_VERSION:-[0-9.]+' scripts/fetch-forge.sh | cut -d- -f2)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Forge
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: forge-${{ steps.pin.outputs.version }}
+
+      - name: Fetch Forge
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: scripts/fetch-forge.sh
+
+      - name: Build the bridge
+        run: java/build.sh
+
+      - name: Check the bridge loads against the jar it was built for
+        # Catches the case the build alone does not: a class that compiles but
+        # references something the pinned Forge no longer has.
+        run: |
+          forge=$(ls vendor/forge-gui-desktop-*-jar-with-dependencies.jar | head -1)
+          gson=$(ls vendor/lib/gson-*.jar | head -1)
+          for class in Bridge StateView PlayerControllerGauntlet LobbyPlayerGauntlet GauntletMain; do
+            javap -cp "java/build/gauntlet-bridge.jar:$forge:$gson" \
+              "forge.gauntlet.$class" > /dev/null
+            echo "ok $class"
+          done

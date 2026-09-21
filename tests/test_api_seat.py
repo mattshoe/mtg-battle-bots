@@ -174,3 +174,56 @@ def test_the_seat_declares_that_it_costs_money() -> None:
     """The budget bills only seats that say so, so a paid seat that forgot
     would run free and uncapped."""
     assert ApiSeat.costs_money is True
+
+
+# ----------------------------------- the values, not just the shape
+
+# The fake client records every kwarg and the tests above read only two of
+# them, so pinning the model, ignoring max_tokens, or replacing the system
+# prompt all survived. Each is a silent cost or quality change.
+
+
+def test_the_model_asked_for_is_the_model_billed() -> None:
+    """Pinning a model here bills up to five times per token with --model
+    becoming decorative.
+
+    The model asked for is deliberately one nobody would hardcode. An earlier
+    version asked for the same model a plausible mutation pins to, so the
+    mutation passed the test it was supposed to fail.
+    """
+    client = _FakeClient()
+    seat = _seat(client)
+    seat.model = "claude-sonnet-5"
+    seat.decide(_request(), timeout=30)
+    assert client.calls[0]["model"] == "claude-sonnet-5"
+
+
+def test_the_default_model_is_the_cheap_one() -> None:
+    """Picking from a numbered list a thousand times does not want Sonnet at
+    five times the price."""
+    assert ApiSeat().model == "claude-haiku-4-5"
+
+
+def test_max_tokens_is_passed_and_is_small() -> None:
+    """One choice and one sentence. A large ceiling here is a bill, not a
+    better answer."""
+    client = _FakeClient()
+    seat = _seat(client)
+    seat.decide(_request(), timeout=30)
+    assert client.calls[0]["max_tokens"] == seat.max_tokens
+    assert seat.max_tokens <= 1000
+
+
+def test_the_system_prompt_tells_the_seat_how_to_answer() -> None:
+    client = _FakeClient()
+    _seat(client).decide(_request(), timeout=30)
+    system = client.calls[0]["system"][0]["text"]
+    assert "CHOICE:" in system
+    assert "WHY:" in system
+
+
+def test_the_timeout_is_passed_to_the_call() -> None:
+    """Without it a hung call blocks the match past every clock the run set."""
+    client = _FakeClient()
+    _seat(client).decide(_request(), timeout=42)
+    assert client.calls[0]["timeout"] == 42

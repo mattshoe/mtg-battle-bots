@@ -92,9 +92,17 @@ def match_socket(match_id: str) -> Path:
     if len(str(natural).encode()) <= _SOCKET_PATH_LIMIT:
         return natural
 
+    import hashlib
+    import os
     import tempfile
 
-    short = Path(tempfile.gettempdir()) / f"gauntlet-{match_id}.sock"
+    # Salted with the state directory, so two runs with different state
+    # directories cannot land on the same socket. A fixed name here meant two
+    # test runs, or two installs, silently sharing one match's control plane.
+    salt = hashlib.sha1(f"{state_dir()}:{os.getpid()}".encode(), usedforsecurity=False).hexdigest()[
+        :8
+    ]
+    short = Path(tempfile.gettempdir()) / f"gauntlet-{salt}-{match_id}.sock"
     if len(str(short).encode()) > _SOCKET_PATH_LIMIT:
         raise OSError(
             f"no socket path short enough for {match_id}: "

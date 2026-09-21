@@ -335,3 +335,82 @@ def test_one_good_reply_forgives_the_failures_before_it(monkeypatch) -> None:
         with pytest.raises(SeatTimeout):
             seat.decide(_request(), timeout=5)
     assert not seat._exhausted
+
+
+# ------------------------------------------- the session options themselves
+
+# _ensure_client is never reached by the tests above, because they replace the
+# async round trip wholesale. So the options it sets — including the empty tool
+# list that is the only thing stopping a seat reading its opponent's decklist
+# off disk — had never been asserted.
+
+
+class _FakeOptions:
+    def __init__(self, **kw) -> None:
+        self.kw = kw
+        _FakeOptions.last = kw
+
+
+class _FakeClient:
+    def __init__(self, options=None) -> None:
+        self.options = options
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+
+@pytest.fixture
+def fake_sdk(monkeypatch):
+    """Stand in for claude_agent_sdk so _ensure_client can actually run."""
+    import sys
+    import types
+
+    module = types.ModuleType("claude_agent_sdk")
+    module.ClaudeAgentOptions = _FakeOptions
+    module.ClaudeSDKClient = _FakeClient
+    monkeypatch.setitem(sys.modules, "claude_agent_sdk", module)
+    return module
+
+
+def _build_client(seat: SdkSeat) -> None:
+    import asyncio
+
+    asyncio.run(seat._ensure_client())
+
+
+def test_the_seat_is_given_no_tools_at_all(fake_sdk) -> None:
+    """Invariant 3, on the seat used by the unattended mode.
+
+    A seat with Read could open the opponent's .dck in the match's own deck
+    directory, which is their whole decklist. Neither the suite nor the Java
+    greps would see it.
+    """
+    seat = SdkSeat()
+    _build_client(seat)
+    assert _FakeOptions.last["allowed_tools"] == []
+
+
+def test_the_seat_answers_in_one_turn(fake_sdk) -> None:
+    """More turns means the seat can iterate, which costs quota per decision
+    and changes nothing about the answer it has to give."""
+    seat = SdkSeat()
+    _build_client(seat)
+    assert _FakeOptions.last["max_turns"] == 1
+
+
+def test_the_model_asked_for_is_the_model_used(fake_sdk) -> None:
+    """--model reaches the session, rather than the default being pinned."""
+    seat = SdkSeat(model="claude-opus-5")
+    _build_client(seat)
+    assert _FakeOptions.last["model"] == "claude-opus-5"
+
+
+def test_the_system_prompt_tells_the_seat_how_to_answer(fake_sdk) -> None:
+    seat = SdkSeat()
+    _build_client(seat)
+    system = _FakeOptions.last["system_prompt"]
+    assert "CHOICE:" in system
+    assert "WHY:" in system

@@ -121,7 +121,7 @@ printing its card data has.
 | `--routed` | str | `mulligan,cast_or_pass,attack,block` | decision kinds sent to a seat, comma separated |
 | `--decision-timeout` | int | `300` | seconds a seat may think before Forge decides for it |
 | `--game-timeout` | int | `900` | seconds before a game is called a draw |
-| `--model` | str | `claude-sonnet-5` | model for `api` seats, ignored otherwise |
+| `--model` | str | `claude-haiku-4-5` | model for `api` seats, ignored otherwise |
 | `--owner` | str | none | collection owner for deck lookup |
 | `--trace` / `--no-trace` | flag | off | log every decision point Forge reaches, routed or not |
 | `--json` | flag | off | machine-readable |

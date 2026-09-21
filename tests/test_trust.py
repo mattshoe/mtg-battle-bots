@@ -206,6 +206,13 @@ def test_a_transcript_failure_does_not_hand_the_match_to_forge(tmp_path) -> None
         assert answered == 5, (
             f"the bridge died after a transcript failure, answering only {answered} of 5"
         )
+        # And the decision whose record was lost is a fallback, because Forge
+        # played it. Counting it as answered reported a Forge-played run as
+        # clean, which is the whole failure this guards.
+        asked, missed = server.result.per_seat["A"]
+        assert asked == 5
+        assert missed == 1, f"a lost record was counted as an answered decision: {missed}"
+        assert server.serving_errors
     finally:
         server.shutdown()
 
@@ -422,4 +429,63 @@ def test_one_decisions_token_count_is_not_billed_to_the_next(tmp_path) -> None:
             f"a stale token count was re-billed: {budget.input_tokens}"
         )
     finally:
+        server.shutdown()
+
+
+def test_the_server_reserves_rather_than_merely_checking(tmp_path) -> None:
+    """The cap has to bind on decisions in flight, not just billed ones.
+
+    `reserve()` is tested on the Budget and was tested nowhere on the server,
+    so swapping it for `check()` survived. With `check()` every worker in a
+    sweep passes a cap one of them had room for, which is the overrun the
+    budget docstring says already happened.
+    """
+    import threading
+
+    from gauntlet.budget import Budget, estimate_usd
+
+    holding = threading.Event()
+    release = threading.Event()
+
+    class _Slow(Seat):
+        controller = "api"
+        costs_money = True
+        last_usage = (1030, 60)
+
+        def decide(self, request: Request, timeout: float) -> Response:
+            holding.set()
+            release.wait(timeout=5)
+            return Response(id=request.id, choice=0, why="held")
+
+    model = "claude-haiku-4-5"
+    # Room for one decision only.
+    budget = Budget(max_usd=estimate_usd(1, model) * 1.5, model=model)
+    server = MatchServer(
+        match_id="reserve",
+        seats={"A": _Slow()},
+        transcript=Transcript(tmp_path / "t.db"),
+        decision_timeout=5.0,
+        budget=budget,
+    )
+    server.result.expected_seats = {"A"}
+    endpoint, _ = server.bind()
+    server.start()
+    host, port = endpoint.split(":")
+
+    try:
+        # One decision in flight and unbilled.
+        first = socket.create_connection((host, int(port)), timeout=5)
+        first.sendall(_wire(1))
+        assert holding.wait(timeout=5)
+
+        # A second seat asks while the first is still thinking. The cap has
+        # room for one, so this must be refused rather than dispatched.
+        assert budget.in_flight == 1, "the decision in flight was never reserved"
+        assert budget.committed_usd >= budget.max_usd * 0.5
+
+        release.set()
+        first.makefile("rb").readline()
+        first.close()
+    finally:
+        release.set()
         server.shutdown()

@@ -533,3 +533,129 @@ def test_a_seat_that_died_late_is_still_void(_isolated) -> None:
 
     assert not late.trustworthy
     assert "ran out of capacity" in late.untrustworthy_because
+
+
+# ------------------------------------------- what run() actually hands Forge
+
+
+def test_the_seed_reaches_forge(_isolated, deck_file, fake_forge) -> None:
+    """Reproducibility rests on this one argument.
+
+    build_command is tested in isolation and the stored seed is tested, and
+    nothing connected them, so hardcoding seed=None survived. Every
+    before-and-after deck comparison would have become noise with no signal.
+    """
+    matchmod.run(
+        matchmod.plan(
+            [matchmod.SeatSpec(seat="A", deck=str(deck_file), controller="forge")],
+            seed=4242,
+        )
+    )
+    cmd = fake_forge["cmd"]
+    assert "--seed" in cmd
+    assert cmd[cmd.index("--seed") + 1] == "4242"
+
+
+def test_each_seat_gets_its_own_deck_file(_isolated, tmp_path, fake_forge) -> None:
+    """Writing both seats to one path survived, and every matchup would have
+    been a mirror match with two deck names in the transcript."""
+    mine = tmp_path / "mine.txt"
+    mine.write_text("Commander: Jetmir, Nexus of Revels\n1 Sol Ring\n")
+    theirs = tmp_path / "theirs.txt"
+    theirs.write_text("Commander: Anowon, the Ruin Thief\n1 Swamp\n")
+
+    planned = matchmod.plan(
+        [
+            matchmod.SeatSpec(seat="A", deck=str(mine), controller="forge"),
+            matchmod.SeatSpec(seat="B", deck=str(theirs), controller="forge"),
+        ]
+    )
+
+    assert planned.deck_paths["A"] != planned.deck_paths["B"]
+    assert planned.deck_paths["A"].read_text() != planned.deck_paths["B"].read_text()
+    assert "Jetmir" in planned.deck_paths["A"].read_text()
+    assert "Anowon" in planned.deck_paths["B"].read_text()
+
+
+def test_an_empty_routing_list_is_sent_rather_than_omitted(_isolated, deck_file) -> None:
+    """Omitting the flag made GauntletMain fall back to its own default, so a
+    seat asked to route nothing routed everything, at full price."""
+    from gauntlet.engine import SeatConfig, build_command
+
+    cmd = build_command(
+        [SeatConfig(seat="A", deck_path=deck_file, bridge_endpoint="h:1", routed_kinds=())]
+    )
+    assert "--routed" in cmd
+    assert "A=" in cmd
+
+
+def test_provenance_is_recorded_so_a_result_can_be_reproduced(
+    _isolated, deck_file, fake_forge
+) -> None:
+    """The decklist, the Forge version, the bridge revision and the routing
+    policy are what make a transcript reproducible, and blanking any of them
+    changed nothing."""
+    import json as jsonlib
+    import sqlite3
+
+    from gauntlet import paths
+
+    planned = matchmod.plan(
+        [matchmod.SeatSpec(seat="A", deck=str(deck_file), controller="forge")],
+        seed=11,
+    )
+    matchmod.run(planned)
+
+    conn = sqlite3.connect(paths.transcripts_db())
+    row = conn.execute(
+        "SELECT forge_version, bridge_revision, policy FROM matches WHERE id = ?",
+        (planned.match_id,),
+    ).fetchone()
+    decklist = conn.execute(
+        "SELECT decklist FROM seats WHERE match_id = ? AND seat = 'A'", (planned.match_id,)
+    ).fetchone()[0]
+    conn.close()
+
+    forge_version, bridge_revision, policy = row
+    assert forge_version, "no Forge version recorded"
+    assert bridge_revision, "no bridge revision recorded"
+    assert jsonlib.loads(policy)["routed"], "the routing policy was not recorded"
+
+    cards = jsonlib.loads(decklist)
+    assert cards["commanders"], "the deck played was not recorded"
+    assert cards["main"]
+
+
+def test_a_seat_exhausted_late_in_a_real_run_voids_it(
+    _isolated, deck_file, fake_forge, monkeypatch
+) -> None:
+    """The one line copying the server's exhaustion into the result.
+
+    Deleting it survived, and a seat that hit its session limit on decision 95
+    of 100 left the fallback rate under the threshold, so the run read as valid
+    with a clean win record. That is the incident this project exists for.
+    """
+
+    class _DiesLate(Seat):
+        controller = "sdk"
+        costs_money = True
+
+        def __init__(self) -> None:
+            self.n = 0
+
+        def decide(self, request: Request, timeout: float) -> Response:
+            self.n += 1
+            if self.n > 18:
+                raise SeatExhausted("session limit")
+            return Response(id=request.id, choice=0, why="fine")
+
+    monkeypatch.setattr(matchmod, "build_seats", lambda p: {"A": _DiesLate()})
+    fake_forge["feed"] = 20
+
+    result = matchmod.run(_plan(deck_file))
+
+    assert result.exhausted, "the seat's exhaustion never reached the result"
+    assert not result.trustworthy
+    assert result.fallback_rate < 0.25, (
+        "this test only means something while the rate stays under the threshold"
+    )
