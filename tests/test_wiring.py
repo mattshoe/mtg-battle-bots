@@ -659,3 +659,246 @@ def test_a_seat_exhausted_late_in_a_real_run_voids_it(
     assert result.fallback_rate < 0.25, (
         "this test only means something while the rate stays under the threshold"
     )
+
+
+def test_sweeping_against_all_never_includes_the_deck_itself(_isolated, monkeypatch) -> None:
+    """--against all is the default and was untested.
+
+    --deck takes a slug or a name, so excluding by slug alone made a deck named
+    rather than slugged play itself, and the mirror's 50% went into the
+    headline. The comment on that line says it already shipped once.
+    """
+    from dataclasses import dataclass
+
+    from gauntlet import cli as climod
+
+    @dataclass
+    class _Row:
+        slug: str
+        name: str
+        owner: str = "tester"
+        commander: str = "X"
+        card_count: int = 100
+
+    rows = [
+        _Row(slug="hawk-swarm", name="Feather Storm"),
+        _Row(slug="other-deck", name="Something Else"),
+    ]
+    monkeypatch.setattr(climod.deckmod, "list_collection_decks", lambda **kw: rows)
+
+    seen: dict = {}
+
+    def capture(deck, opponents, **kw):
+        seen["opponents"] = opponents
+        return [], 0.1
+
+    monkeypatch.setattr(climod.sweep, "timed_sweep", capture)
+
+    # Named, not slugged, which is the case that used to slip through.
+    runner.invoke(
+        app,
+        [
+            "sweep",
+            "--deck",
+            "Feather Storm",
+            "--against",
+            "all",
+            "--seat-a",
+            "forge",
+            "--seat-b",
+            "forge",
+        ],
+    )
+    assert "hawk-swarm" not in seen["opponents"], "the deck was swept against itself"
+    assert seen["opponents"] == ["other-deck"]
+
+
+def test_a_confirmed_run_is_capped_like_a_yes_flagged_one(
+    _isolated, deck_file, monkeypatch
+) -> None:
+    """The --yes path was tested and the interactive-confirm path was not, so a
+    user who types y could have got an uncapped run."""
+    import types
+
+    import typer
+
+    from gauntlet import cli as climod
+
+    monkeypatch.setattr(typer, "confirm", lambda *a, **k: True)
+    # CliRunner replaces sys.stdin after any patch of the real one, so patch
+    # what the module under test actually reads.
+    monkeypatch.setattr(
+        climod,
+        "sys",
+        types.SimpleNamespace(stdin=types.SimpleNamespace(isatty=lambda: True)),
+    )
+
+    seen: dict = {}
+
+    def capture(plan_, *, budget=None, **kw):
+        from gauntlet.server import MatchResult
+
+        seen["budget"] = budget
+        r = MatchResult(match_id=plan_.match_id)
+        r.expected_seats = set()
+        return r
+
+    monkeypatch.setattr(matchmod, "run", capture)
+    runner.invoke(
+        app,
+        [
+            "run",
+            "--a",
+            str(deck_file),
+            "--b",
+            str(deck_file),
+            "--seat-a",
+            "api",
+            "--seat-b",
+            "forge",
+            "--games",
+            "1",
+            "--max-cost",
+            "2.75",
+        ],
+    )
+    assert seen["budget"] is not None, "a confirmed run was uncapped"
+    assert seen["budget"].max_usd == 2.75
+
+
+def test_a_result_with_no_game_number_is_not_collapsed_into_one(_isolated) -> None:
+    """Six numberless results used to dedupe into one, so a twenty-game run
+    reported a single game."""
+    from gauntlet.server import MatchServer
+    from gauntlet.transcript import Transcript
+
+    server = MatchServer(
+        match_id="nonum",
+        seats={},
+        transcript=Transcript(_isolated / "t.db"),
+    )
+    for winner in ("A", "A", "B", "A", "B", "A"):
+        server.record_game_result({"winner": winner, "draw": False, "turns": 10})
+
+    assert len(server.result.games) == 6
+    assert server.result.wins_by_seat() == {"A": 4, "B": 2}
+
+
+def test_a_crashed_engine_is_not_recorded_as_finished(
+    _isolated, deck_file, fake_forge, monkeypatch
+) -> None:
+    """An exception out of wait() propagates through the finally that writes
+    the status, and the status used to be set optimistically up front."""
+    import sqlite3
+
+    from gauntlet import paths
+
+    class _Exploding:
+        on_line = staticmethod(lambda line: None)
+
+        def wait(self, timeout=None):
+            raise RuntimeError("the JVM vanished")
+
+        def drain(self, timeout=None):
+            return True
+
+        def stop(self, grace: float = 5.0) -> None:
+            pass
+
+    monkeypatch.setattr(matchmod.engine, "launch", lambda *a, **kw: _Exploding())
+    planned = matchmod.plan([matchmod.SeatSpec(seat="A", deck=str(deck_file), controller="forge")])
+    with pytest.raises(RuntimeError):
+        matchmod.run(planned)
+
+    conn = sqlite3.connect(paths.transcripts_db())
+    status = conn.execute(
+        "SELECT status FROM matches WHERE id = ?", (planned.match_id,)
+    ).fetchone()[0]
+    conn.close()
+    assert status != "finished", "a match that died mid-run claims it completed"
+
+
+@pytest.mark.parametrize(
+    ("line", "expected_game"),
+    [
+        ('{"kind":"game_result","game":1,"winner":"A"}', 1),
+        ('[main] INFO forge: {"kind":"game_result","game":2,"winner":"A"} ok', 2),
+        ('noise {"unrelated":1} {"kind":"game_result","game":3,"winner":"B"}', 3),
+        ('   {"kind":"game_result","game":4,"draw":true}   ', 4),
+    ],
+)
+def test_a_result_is_found_whatever_shares_its_line(line: str, expected_game: int) -> None:
+    """The only result channel a Forge-versus-Forge sweep has.
+
+    Every fake engine emits a bare unprefixed line, which is the one input this
+    function does not need to exist for. A regression drops every game and the
+    sweep reports 0-0-0.
+    """
+    payload = matchmod._extract_result(line)
+    assert payload is not None
+    assert payload["game"] == expected_game
+
+
+@pytest.mark.parametrize(
+    "line",
+    ["no json at all", '{"kind":"other","game":1}', "{ broken json", ""],
+)
+def test_a_line_that_is_not_a_result_is_not_mistaken_for_one(line: str) -> None:
+    assert matchmod._extract_result(line) is None
+
+
+def test_a_detached_seat_keeps_the_model_it_was_given(_isolated, deck_file) -> None:
+    """The plan's `model` prices the budget and `options` picks the player.
+
+    Only the first round-tripped under test, so a detached `--model opus` run
+    could price opus and play haiku, or price haiku for an opus run and
+    overshoot the cap fivefold. The foreground path is guarded and the detached
+    one, which the docs tell you to use for agent play, was not.
+    """
+    from gauntlet.budget import Budget
+
+    planned = matchmod.plan(
+        [
+            matchmod.SeatSpec(
+                seat="A",
+                deck=str(deck_file),
+                controller="sdk",
+                options={"model": "claude-opus-5"},
+            ),
+            matchmod.SeatSpec(seat="B", deck=str(deck_file), controller="forge"),
+        ],
+        budget=Budget(max_usd=5.0, model="claude-opus-5"),
+    )
+    back = matchmod.load_plan(matchmod._dump_plan(planned))
+
+    assert back.specs[0].options == {"model": "claude-opus-5"}
+    # And the seat built from it really uses that model, rather than its own
+    # default.
+    seats = matchmod.build_seats(back)
+    assert seats["A"].model == "claude-opus-5"
+    assert "B" not in seats, "a forge seat was given a python seat"
+
+
+def test_a_seat_is_told_which_deck_it_is_piloting(_isolated, deck_file) -> None:
+    """deck_note is how a paid seat knows its own plan. Dropping it survived."""
+    planned = matchmod.plan([matchmod.SeatSpec(seat="A", deck=str(deck_file), controller="sdk")])
+    seats = matchmod.build_seats(planned)
+    assert seats["A"].deck_note, "the seat was never told what deck it holds"
+
+
+def test_deck_warnings_go_to_stderr_so_json_stays_parseable(_isolated, tmp_path, capsys) -> None:
+    """A warning on stdout lands in the middle of `--json` output.
+
+    That shipped once and is named in the comment on the line. Nothing looked
+    at which stream it used.
+    """
+    short = tmp_path / "short.txt"
+    short.write_text("Commander: Jetmir, Nexus of Revels\n1 Sol Ring\n")
+
+    matchmod.plan([matchmod.SeatSpec(seat="A", deck=str(short), controller="forge")])
+
+    captured = capsys.readouterr()
+    assert "warning" in captured.err.lower(), "the deck warning was not printed at all"
+    assert "warning" not in captured.out.lower(), (
+        "a deck warning went to stdout, which corrupts --json"
+    )

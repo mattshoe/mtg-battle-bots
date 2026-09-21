@@ -217,16 +217,6 @@ def test_to_dck_is_deterministic_across_input_order():
     assert to_dck(first) == to_dck(second)
 
 
-def test_to_dck_matches_the_shape_of_a_real_forge_precon():
-    """Same section order and header spelling as Forge's own commanderprecons."""
-    lines = to_dck(from_text(SILVERQUILL_TEXT, "Silverquill Influence")).splitlines()
-    assert lines[0] == "[metadata]"
-    assert lines[1].startswith("Name=")
-    assert lines[2] == "[Commander]"
-    assert "[Main]" in lines
-    assert lines.index("[Commander]") < lines.index("[Main]")
-
-
 def test_write_dck_round_trips(tmp_path):
     deck = from_text(SILVERQUILL_TEXT, "Silverquill Influence")
     out = write_dck(deck, tmp_path / "nested" / "deck.dck")

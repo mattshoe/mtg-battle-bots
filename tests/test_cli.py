@@ -75,10 +75,20 @@ def test_every_command_has_help(command: str) -> None:
     result = runner.invoke(app, [command, "--help"])
     assert result.exit_code == 0, result.output
     assert "Usage" in result.output
-    # The summary line, which is the docstring, not the command name echoed
-    # back by the usage string.
-    body = result.output.split("Usage", 1)[1]
-    assert len(body.strip()) > 80, f"{command} has no help text of its own"
+    # Typer's options box alone is hundreds of characters, so a length check
+    # passes for a command with no docstring. Look for the docstring itself.
+    from gauntlet.cli import app as _app
+
+    documented = {
+        c.name or c.callback.__name__: (c.callback.__doc__ or "").strip()
+        for c in _app.registered_commands
+    }
+    summary = documented.get(command, "")
+    assert summary, f"{command} has no docstring"
+    first_words = " ".join(summary.split()[:4])
+    assert first_words.split()[0] in result.output, (
+        f"{command}'s help does not show its own summary"
+    )
 
 
 # -------------------------------------------------------------- the cost gate
@@ -242,7 +252,9 @@ def test_export_warns_about_an_illegal_deck_without_refusing(_isolated, tmp_path
     assert out.exists()
     # The "warns" half of the name, which nothing checked.
     assert "warning" in result.output.lower()
-    assert "100" in result.output or "cards" in result.output.lower()
+    # Names the actual problem. Every successful export prints the word
+    # "cards", so matching that asserted nothing.
+    assert "Commander wants 100" in result.output
 
 
 # ---------------------------------------------------------------- transcripts

@@ -373,3 +373,30 @@ def test_the_since_feed_reaches_the_built_prompt() -> None:
     built = build_prompt(request, {})
     assert "Since your last decision:" in built
     assert "A loses 6 life" in built
+
+
+def test_reasoning_given_before_the_choice_is_not_swallowed() -> None:
+    """Every reply fixture in the suite is CHOICE-first.
+
+    A model that puts its reasoning first used to have its own `CHOICE: 1`
+    pulled into the reasoning column, which is the one column this project
+    says it exists for.
+    """
+    request = Request.parse(
+        json.dumps(
+            {
+                "v": VERSION,
+                "id": 1,
+                "seat": "A",
+                "kind": "cast_or_pass",
+                "prompt": "priority",
+                "options": [{"i": 0, "label": "Pass"}, {"i": 1, "label": "Cast"}],
+                "state": {},
+            }
+        )
+    )
+    choice, why = parse_reply("WHY: Ramp now, the curve is the constraint.\nCHOICE: 1", request)
+
+    assert choice == 1
+    assert why == "Ramp now, the curve is the constraint."
+    assert "CHOICE" not in why

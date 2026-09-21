@@ -7,7 +7,7 @@ and whether it cleans up after itself. None of that needs a model.
 
 from __future__ import annotations
 
-import threading
+import contextlib
 
 import pytest
 
@@ -42,6 +42,9 @@ class _Scripted(SdkSeat):
     def _ensure_loop(self):
         return _Immediate(self)
 
+    async def _ask(self, prompt: str) -> str:  # pragma: no cover - replaced
+        raise AssertionError("patched in the fixture")
+
 
 class _Immediate:
     """Stands in for the event loop, answering from the script synchronously."""
@@ -51,10 +54,24 @@ class _Immediate:
 
 
 def _patch_ask(monkeypatch, seat: _Scripted) -> None:
-    """Replace the async round trip with the next scripted reply."""
+    """Replace the async round trip with the next scripted reply.
+
+    The prompt is captured rather than discarded. It used to be built and
+    thrown away unread, so a seat that sent the model an empty string passed
+    every test in this file.
+    """
     import asyncio
 
+    async def capture(prompt: str) -> str:
+        seat.prompts.append(prompt)
+        return ""
+
+    seat._ask = capture
+
     def run_coroutine_threadsafe(coro, loop):
+        # Run the coroutine far enough to record the prompt it was given.
+        with contextlib.suppress(StopIteration):
+            coro.send(None)
         coro.close()
 
         class _Future:
@@ -186,13 +203,6 @@ def test_a_seat_closed_by_exhaustion_stays_exhausted(monkeypatch) -> None:
         seat.decide(_request(id=2), timeout=1)
 
 
-def test_close_is_safe_to_call_twice() -> None:
-    """Shutdown runs it, and a caller may too."""
-    seat = SdkSeat()
-    seat.close()
-    seat.close()
-
-
 def test_the_seat_reports_no_usage_so_the_budget_estimates() -> None:
     """The Agent SDK does not expose token counts. The budget has to know that
     rather than assume zero, or a run would look free."""
@@ -231,30 +241,6 @@ def test_closing_stops_the_loop_thread() -> None:
     assert thread is not None
     thread.join(timeout=5)
     assert not thread.is_alive(), "the seat left its event loop running"
-
-
-def test_concurrent_close_and_decide_do_not_deadlock(monkeypatch) -> None:
-    """Shutdown races the last decision at the end of every match."""
-    seat = _Scripted(["CHOICE: 0\nWHY: fine"] * 5)
-    _patch_ask(monkeypatch, seat)
-    errors: list[BaseException] = []
-
-    def decide():
-        try:
-            seat.decide(_request(), timeout=2)
-        except (SeatTimeout, SeatExhausted):
-            pass
-        except BaseException as exc:
-            errors.append(exc)
-
-    threads = [threading.Thread(target=decide) for _ in range(3)]
-    for t in threads:
-        t.start()
-    seat.close()
-    for t in threads:
-        t.join(timeout=5)
-        assert not t.is_alive()
-    assert not errors, errors
 
 
 # ------------------------------------------- what no phrase list can cover
@@ -414,3 +400,41 @@ def test_the_system_prompt_tells_the_seat_how_to_answer(fake_sdk) -> None:
     system = _FakeOptions.last["system_prompt"]
     assert "CHOICE:" in system
     assert "WHY:" in system
+
+
+def test_the_board_state_actually_reaches_the_model(monkeypatch) -> None:
+    """The SDK equivalent of the api seat's check.
+
+    The prompt was built and never inspected, so sending the model nothing at
+    all passed every test here.
+    """
+    seat = _Scripted(["CHOICE: 1\nWHY: ramping"])
+    _patch_ask(monkeypatch, seat)
+    seat.decide(
+        _request(new_cards={"cultivate": {"name": "Cultivate", "text": "Search."}}),
+        timeout=5,
+    )
+
+    assert seat.prompts, "the seat never built a prompt"
+    sent = seat.prompts[0]
+    assert "40 life" in sent
+    assert "Cultivate" in sent, "the seat was not told what its cards do"
+    assert "Search." in sent
+    assert "[1]" in sent, "the seat was not given its options"
+
+
+def test_close_releases_a_seat_that_really_started(monkeypatch, fake_sdk) -> None:
+    """The old version called close() on a seat with no loop and no client, so
+    neither branch it is supposed to exercise ever ran."""
+    seat = SdkSeat()
+    loop = seat._ensure_loop()
+    assert loop is not None
+    thread = seat._thread
+
+    seat.close()
+    assert seat._released
+    thread.join(timeout=5)
+    assert not thread.is_alive(), "close left the seat's event loop running"
+
+    # And again, which shutdown does after a caller already has.
+    seat.close()

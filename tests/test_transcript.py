@@ -455,3 +455,88 @@ def test_the_extra_column_keeps_what_this_version_does_not_model(db: Path) -> No
     stored = jsonlib.loads(raw)
     assert stored["since"] == ["A draws a card", "A plays Forest"]
     assert stored["proposed"] == ["tempest-hawk"]
+
+
+def test_a_drawn_match_names_no_winner(db: Path) -> None:
+    """Every summarise test was 2-0. Dropping the tie check survived, and a
+    drawn match would have been reported as a win for whoever sorted first."""
+    t = started(db)
+    t.record_game(match_id="m1", game_no=1, winner_seat="A", draw=False, turns=10, ms=1)
+    t.record_game(match_id="m1", game_no=2, winner_seat="B", draw=False, turns=11, ms=1)
+    t.close()
+
+    assert summarise("m1", db)["winner"] is None
+
+
+def test_events_appear_in_the_play_by_play(db: Path) -> None:
+    """Events are where seat_exhausted, budget_exceeded and protocol_error
+    land. They are the only in-transcript signal that a run was halted rather
+    than played out, and dropping them from the render survived, leaving a
+    match that simply stops."""
+    t = started(db)
+    t.record_event(
+        match_id="m1",
+        kind="budget_exceeded",
+        payload={"seat": "A", "reason": "spend limit reached"},
+    )
+    t.close()
+
+    out = render("m1", db)
+    assert "budget_exceeded" in out
+    assert "spend limit" in out
+
+
+def test_a_database_written_before_the_extra_column_still_works(tmp_path) -> None:
+    """The migration path, which every test avoided by building a fresh file.
+
+    On an install upgraded over an existing transcript, every record_decision
+    would raise. The server would catch it and tally a fallback, so the run
+    reads as entirely Forge's, one step removed from the real cause.
+    """
+    import json as jsonlib
+    import sqlite3
+
+    db = tmp_path / "old.db"
+    t = Transcript(db)
+    t.close()
+
+    # Rewind to the pre-migration shape.
+    conn = sqlite3.connect(db)
+    conn.execute("ALTER TABLE decisions DROP COLUMN extra")
+    conn.commit()
+    columns = {r[1] for r in conn.execute("PRAGMA table_info(decisions)")}
+    conn.close()
+    assert "extra" not in columns, "the fixture did not actually rewind the schema"
+
+    reopened = Transcript(db)
+    reopened.start_match(
+        match_id="old",
+        format="Commander",
+        seed=1,
+        seats=[{"seat": "A", "controller": "forge"}],
+    )
+    reopened.record_decision(
+        match_id="old",
+        seat="A",
+        request=Request.parse(
+            jsonlib.dumps(
+                {
+                    "v": VERSION,
+                    "id": 1,
+                    "seat": "A",
+                    "kind": "cast_or_pass",
+                    "prompt": "p",
+                    "options": [{"i": 0, "label": "Pass priority"}],
+                    "state": {},
+                }
+            )
+        ),
+        response=Response(id=1, choice=0, why="after the migration"),
+        latency_ms=1,
+    )
+    reopened.close()
+
+    conn = sqlite3.connect(db)
+    why = conn.execute("SELECT why FROM decisions WHERE match_id='old'").fetchone()[0]
+    conn.close()
+    assert why == "after the migration"

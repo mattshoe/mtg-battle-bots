@@ -128,3 +128,139 @@ def test_a_halted_sweep_skips_the_rest_without_playing_them(stub_run) -> None:
     assert p.exhausted
     assert p.wins == 0
     assert "skipped" in p.error
+
+
+# ------------------------------------------ what makes a pairing not a result
+
+# Three ways a pairing produces numbers nobody played, all with the guard in
+# place and none of them tested, so deleting any of the three survived.
+
+
+def test_a_crashed_forge_does_not_contribute_its_partial_games(stub_run) -> None:
+    """Forge exits four games into twenty.
+
+    Without the guard those four wins go into the headline, no warning prints,
+    `--json` says valid, and the command exits 0. A script polling the exit
+    status reads a sixteen-game-short run as complete.
+    """
+    crashed = _result([{"game": 1, "winner": "A", "draw": False, "turns": 9}])
+    crashed.crashed = True
+    crashed.error = "forge exited 1"
+    stub_run(crashed)
+
+    p = sweepmod.run_pairing(sweepmod.Pairing(deck="mine", opponent="theirs", games=20))
+    assert p.exhausted, "a crashed match reported its partial games as a result"
+    assert p.error
+
+
+def test_a_pairing_that_never_launched_is_not_a_nil_nil_draw(monkeypatch) -> None:
+    """A typo'd slug or an unreadable collection produced a pairing with an
+    error and exhausted=False, so the sweep read as valid and exited 0."""
+
+    def explode(*a, **kw):
+        raise RuntimeError("no deck named that")
+
+    monkeypatch.setattr(sweepmod.matchmod, "plan", explode)
+    p = sweepmod.run_pairing(sweepmod.Pairing(deck="mine", opponent="ghost", games=4))
+
+    assert p.exhausted
+    assert "no deck named that" in p.error
+    assert p.played == 0
+
+
+def test_a_halted_sweep_still_accounts_for_every_opponent(_isolated, monkeypatch) -> None:
+    """Twenty-three decks halting after two used to come back as a two-deck
+    sweep, with the headline computed over whichever finished first.
+
+    The fake blocks after the second pairing so the halt really does land
+    mid-field. A fake that returns instantly lets the pool finish the whole
+    field before the first result is even read, which is not the case under
+    test.
+    """
+    import threading
+
+    played: list[str] = []
+    lock = threading.Lock()
+    proceed = threading.Event()
+
+    def fake_pairing(p, halt=None, **kw):
+        if halt is not None and halt.is_set():
+            p.exhausted = True
+            p.error = "skipped, the sweep stopped before reaching it"
+            return p
+        with lock:
+            played.append(p.opponent)
+            seen = len(played)
+        if p.opponent == "second":
+            p.exhausted = True
+            p.error = "seat ran out of capacity"
+            return p
+        if seen >= 2:
+            # Hold the remaining workers until the halt has been processed.
+            proceed.wait(timeout=5)
+        p.wins = p.games
+        return p
+
+    monkeypatch.setattr(sweepmod, "run_pairing", fake_pairing)
+    opponents = ["first", "second", "third", "fourth", "fifth"]
+
+    def release() -> None:
+        import time
+
+        time.sleep(0.5)
+        proceed.set()
+
+    threading.Thread(target=release, daemon=True).start()
+    results = sweepmod.run_sweep("d", opponents, games=1, workers=1)
+
+    # The property that matters, whatever the timing did: the field is
+    # accounted for, and nothing it never reached is reported as a result.
+    assert {p.opponent for p in results} == set(opponents), (
+        f"the sweep dropped the field it never reached: {[p.opponent for p in results]}"
+    )
+    assert any(p.exhausted for p in results)
+    for p in results:
+        if p.opponent not in played:
+            assert p.exhausted, f"{p.opponent} was never played and is not marked"
+            assert p.wins == 0
+
+
+def test_every_pairing_is_given_the_sweeps_seed(_isolated, monkeypatch) -> None:
+    """A sweep advertised as reproducible could be silently unseeded."""
+    seen: list[int | None] = []
+    monkeypatch.setattr(sweepmod, "run_pairing", lambda p, **kw: (seen.append(p.seed), p)[1])
+    sweepmod.run_sweep("d", ["a", "b", "c"], games=1, seed=4242, workers=1)
+    assert seen == [4242, 4242, 4242]
+
+
+def test_the_table_ranks_the_best_matchups_first(_isolated) -> None:
+    """The docstring says a reader looks for the worst at the bottom, and
+    flipping the sort survived."""
+    good = sweepmod.Pairing(deck="d", opponent="easy", games=4)
+    good.wins = 4
+    bad = sweepmod.Pairing(deck="d", opponent="hard", games=4)
+    bad.losses = 4
+    middling = sweepmod.Pairing(deck="d", opponent="even", games=4)
+    middling.wins, middling.losses = 2, 2
+
+    ordered = sweepmod.run_sweep.__wrapped__ if hasattr(sweepmod.run_sweep, "__wrapped__") else None
+    table = sweepmod.format_table(
+        "d", sorted([bad, good, middling], key=lambda p: (-p.win_rate, p.opponent)), 1.0
+    )
+    assert table.index("easy") < table.index("even") < table.index("hard")
+    assert ordered is None  # nothing to unwrap, kept explicit
+
+
+def test_a_sub_threshold_fallback_rate_is_still_reported(_isolated) -> None:
+    """The only place a fallback rate under the void threshold surfaces.
+
+    Twenty percent of a deck's decisions played by Forge is worth knowing even
+    though it does not void the run.
+    """
+    noisy = sweepmod.Pairing(deck="d", opponent="noisy", games=10)
+    noisy.wins, noisy.losses = 6, 4
+    noisy.decisions, noisy.fallback_rate = 200, 0.2
+
+    table = sweepmod.format_table("d", [noisy], 1.0)
+    assert "fell back to Forge" in table
+    assert "20%" in table

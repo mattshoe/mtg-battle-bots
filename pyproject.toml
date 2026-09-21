@@ -62,7 +62,7 @@ branch = true
 # CI passes --cov-fail-under explicitly as well, because this setting alone
 # makes coverage print FAIL without making pytest exit non-zero. Keep the
 # two in step: this one is the local default, that one is the gate.
-fail_under = 88
+fail_under = 90
 show_missing = true
 skip_covered = false
 exclude_lines = [

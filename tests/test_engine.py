@@ -233,16 +233,19 @@ def test_forge_runs_from_its_own_install_directory(tmp_path, _forge_home) -> Non
 def test_trace_is_passed_to_the_child_only_when_asked(tmp_path) -> None:
     from gauntlet.engine import launch
 
-    for trace, expected in ((True, "1"), (False, "")):
+    # Printed with a marker, so an empty value is still one line to compare
+    # against. The previous version parsed as a conditional expression and
+    # accepted three different outcomes for the off case.
+    for trace, expected in ((True, "[1]"), (False, "[]")):
         seen: list[str] = []
         run = launch(
-            ["/bin/sh", "-c", "echo ${GAUNTLET_TRACE:-}"],
+            ["/bin/sh", "-c", 'echo "[${GAUNTLET_TRACE:-}]"'],
             tmp_path / f"l{trace}.log",
             on_line=seen.append,
             trace=trace,
         )
         run.wait(timeout=10)
-        assert seen == [expected] if expected else seen in ([], [""])
+        assert seen == [expected], f"trace={trace} gave {seen}"
 
 
 def test_a_missing_forge_install_says_so(tmp_path, monkeypatch) -> None:

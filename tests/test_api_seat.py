@@ -153,8 +153,14 @@ def test_a_fatal_api_failure_ends_the_seat(message: str) -> None:
     ["Error code: 400 invalid_request_error", "Read timed out"],
 )
 def test_a_recoverable_failure_costs_one_decision(message: str) -> None:
+    """Matched on the reason as well as the type.
+
+    decide funnels every non-fatal failure into SeatTimeout, so a bare
+    pytest.raises here passes for reasons unrelated to the name, including the
+    request never reaching the client.
+    """
     seat = _seat(_FakeClient(raises=RuntimeError(message)))
-    with pytest.raises(SeatTimeout):
+    with pytest.raises(SeatTimeout, match="api call failed"):
         seat.decide(_request(), timeout=30)
 
 
@@ -204,14 +210,19 @@ def test_the_default_model_is_the_cheap_one() -> None:
     assert ApiSeat().model == "claude-haiku-4-5"
 
 
-def test_max_tokens_is_passed_and_is_small() -> None:
+def test_max_tokens_is_the_one_asked_for() -> None:
     """One choice and one sentence. A large ceiling here is a bill, not a
-    better answer."""
+    better answer.
+
+    Asserting it equals the seat's own attribute passed against a hardcoded
+    value, so this asks for an unusual one.
+    """
     client = _FakeClient()
     seat = _seat(client)
+    seat.max_tokens = 123
     seat.decide(_request(), timeout=30)
-    assert client.calls[0]["max_tokens"] == seat.max_tokens
-    assert seat.max_tokens <= 1000
+    assert client.calls[0]["max_tokens"] == 123
+    assert ApiSeat().max_tokens <= 1000, "the default ceiling is a bill, not an answer"
 
 
 def test_the_system_prompt_tells_the_seat_how_to_answer() -> None:

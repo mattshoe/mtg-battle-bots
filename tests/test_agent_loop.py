@@ -371,9 +371,12 @@ def test_run_detached_waits_for_the_match_to_answer(_isolated, tmp_path, monkeyp
     monkeypatch.setattr(matchmod.subprocess, "Popen", _Popen)
     match_id = matchmod.run_detached(planned)
 
-    assert match_id == planned.match_id
-    assert started.is_set(), "run_detached returned before the match could answer"
-    assert paths.match_socket(match_id).exists()
+    # run_detached returns plan_.match_id, so comparing them proves nothing.
+    # What matters is that it waited for the socket the agent will connect to.
+    assert paths.match_socket(match_id).exists(), (
+        "run_detached returned before the match could answer"
+    )
+    assert started.is_set()
 
 
 def test_every_interactive_seat_is_told_to_start(_isolated, tmp_path, monkeypatch) -> None:
