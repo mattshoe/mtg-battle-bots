@@ -24,7 +24,7 @@ from typing import Any
 
 from .prompt import build_prompt, parse_reply
 from .protocol import ProtocolError, Request, Response
-from .seats import Seat, SeatExhausted, SeatTimeout
+from .seats import FATAL_API_ERRORS, Seat, SeatExhausted, SeatTimeout
 
 DEFAULT_MODEL = "claude-haiku-4-5-20251001"
 
@@ -58,22 +58,15 @@ _CHOICE_LINE = re.compile(r"^\s*CHOICE\s*:\s*\d+", re.MULTILINE | re.IGNORECASE)
 #: carries no usable answer, because "rate limit" and "quota" appear in ordinary
 #: Magic reasoning and an earlier version killed healthy runs on them.
 _TERMINAL_PATTERNS = (
+    *FATAL_API_ERRORS,
+    # Ways a Claude Code session ends that an API client never sees.
     "session limit",
     "usage limit",
-    "rate limit",
-    "rate_limit",
-    "quota",
-    "credit balance",
-    "insufficient",
     "unable to respond",
     "cannot continue",
     "can't continue",
     "will not respond",
     "no further responses",
-    "overloaded_error",
-    "service unavailable",
-    "authentication",
-    "unauthorized",
 )
 
 
@@ -114,6 +107,7 @@ class SdkSeat(Seat):
     """
 
     controller = "sdk"
+    costs_money = True
 
     def __init__(
         self,

@@ -278,13 +278,25 @@ def run(
     # Now that the process exists, give the server a way to end it. An
     # exhausted seat has to stop Forge, not just stop answering it.
     server.stop_engine = forge.stop
-    status = "finished"
+    # Pessimistic until the run actually reaches the end. This used to be set to
+    # "finished" up front, so an engine that died inside wait() propagated its
+    # exception through the finally and left the transcript claiming the match
+    # had completed.
+    status = "crashed"
     try:
         code = forge.wait()
+        status = "finished"
         if code not in (0, None):
             status = "crashed"
             server.result.crashed = True
             server.result.error = f"forge exited {code}, see {log_path}"
+        if server.serving_errors:
+            # Some decisions were not recorded, so the transcript is not a
+            # complete account of what happened.
+            server.result.error = (
+                f"{len(server.serving_errors)} decision(s) failed while being served: "
+                f"{server.serving_errors[0]}"
+            )
         if server.exhausted:
             # Not a crash, but the result is not trustworthy either. Say so
             # loudly enough that a caller cannot use the numbers by accident.

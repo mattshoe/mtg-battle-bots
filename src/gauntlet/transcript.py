@@ -249,6 +249,16 @@ class Transcript:
     ) -> int:
         state = request.state or {}
         chosen = response.choice if response is not None else None
+
+        # The invariant, enforced rather than assumed. A fallback is Forge's
+        # play, so it cannot carry a seat's reasoning or a seat's choice. This
+        # used to hold only because one caller happened to pass fallback=True
+        # exactly when response was None.
+        if fallback and response is not None:
+            raise ValueError(
+                "a fallback cannot carry a response: that would record Forge's "
+                "play as the seat's own"
+            )
         options = [
             {"i": o.index, "label": o.label, "card": o.card, "cost": o.cost}
             for o in request.options

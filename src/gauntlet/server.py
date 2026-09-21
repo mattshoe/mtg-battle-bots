@@ -43,8 +43,29 @@ class MatchResult:
     games: list[dict[str, Any]] = field(default_factory=list)
     crashed: bool = False
     error: str = ""
+    #: Decisions asked of a seat, and how many the seat did not answer.
+    #: A run where nobody answered is not a result, whatever the score says.
+    decisions: int = 0
+    fallbacks: int = 0
     #: Seats that ran out of capacity. Non-empty invalidates the result.
     exhausted: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def fallback_rate(self) -> float:
+        return self.fallbacks / self.decisions if self.decisions else 0.0
+
+    @property
+    def trustworthy(self) -> bool:
+        """Whether the numbers in this result mean anything.
+
+        A seat that answered almost nothing did not play the games, Forge did,
+        and reporting a win rate for it is the failure this whole harness is
+        built to make impossible. The threshold is deliberately loose: a few
+        fallbacks are normal, a third of them is not a game anyone played.
+        """
+        if self.exhausted:
+            return False
+        return self.fallback_rate <= MAX_TOLERABLE_FALLBACK_RATE
 
     def wins_by_seat(self) -> dict[str, int]:
         out: dict[str, int] = {}
@@ -53,6 +74,11 @@ class MatchResult:
             if winner:
                 out[winner] = out.get(winner, 0) + 1
         return out
+
+
+#: Above this share of unanswered decisions, a result stops being evidence
+#: about a deck and becomes evidence about the harness.
+MAX_TOLERABLE_FALLBACK_RATE = 0.25
 
 
 def _defer(request: Request) -> bytes:
@@ -89,6 +115,9 @@ class MatchServer:
         #: Seats that ran out of capacity, by seat name. Non-empty means the
         #: run's numbers are not what they claim to be.
         self.exhausted: dict[str, str] = {}
+        #: Failures while serving a decision. Non-empty means some part of
+        #: the record is missing, so the result is not fully trustworthy.
+        self.serving_errors: list[str] = []
         #: Set by whoever launched the engine. Called once when a seat is
         #: exhausted, because setting a flag does not stop a JVM that was
         #: told to play twenty games and is four games in.
@@ -193,7 +222,22 @@ class MatchServer:
                     self._handle_notification(request)
                     continue
 
-                reply = self._decide(request)
+                try:
+                    reply = self._decide(request)
+                except Exception as exc:
+                    # Nothing may kill this thread. If it dies Forge reads EOF,
+                    # latches its bridge broken, and plays every remaining
+                    # decision itself with nothing recording that it did.
+                    # A locked database is ordinary during a parallel sweep.
+                    self.serving_errors.append(f"{type(exc).__name__}: {exc}")
+                    with contextlib.suppress(Exception):
+                        self.transcript.record_event(
+                            match_id=self.match_id,
+                            kind="serving_error",
+                            payload={"seat": request.seat, "error": str(exc)},
+                        )
+                    reply = _defer(request)
+
                 try:
                     stream.write(reply)
                     stream.flush()
@@ -217,7 +261,14 @@ class MatchServer:
         # seat does, because from the outside it is the same situation: this
         # seat cannot answer any more questions.
         try:
-            self.budget.check()
+            # Reserved rather than merely checked. check() and charge() used to
+            # be separate critical sections with a model call in between, so a
+            # sweep with six parallel pairings had twelve decisions in flight
+            # past a cap only one of them had room for.
+            if seat is not None and getattr(seat, "costs_money", False):
+                self.budget.reserve()
+            else:
+                self.budget.check()
         except BudgetExceeded as exc:
             self._halt(request, started, f"budget: {exc}", kind="budget_exceeded")
             return _defer(request)
@@ -254,6 +305,16 @@ class MatchServer:
         self._record(request, response, started, "")
         return response.encode()
 
+    def _stop_the_engine(self) -> None:
+        """End the Forge process, once, from whichever path got here first.
+
+        On its own thread because the caller is usually answering a socket and
+        terminating a JVM takes as long as it takes.
+        """
+        stop, self.stop_engine = self.stop_engine, None
+        if stop is not None:
+            threading.Thread(target=stop, name="gauntlet-stop", daemon=True).start()
+
     def _charge(self, seat: Seat | None) -> None:
         """Bill one decision against the run's budget.
 
@@ -261,7 +322,10 @@ class MatchServer:
         call that reached the model was paid for whatever came back, and a seat
         failing on every decision used to spend without the cap ever moving.
         """
-        if seat is None:
+        # A seat that costs nothing must not consume the cap. An interactive
+        # seat beside a paid one used to burn the budget at the same rate,
+        # halting a run that had spent half what it thought.
+        if seat is None or not getattr(seat, "costs_money", False):
             return
         usage = getattr(seat, "last_usage", None)
         self.budget.charge(
@@ -293,9 +357,7 @@ class MatchServer:
             },
         )
         self.finished.set()
-        if self.stop_engine is not None:
-            stop, self.stop_engine = self.stop_engine, None
-            threading.Thread(target=stop, name="gauntlet-stop", daemon=True).start()
+        self._stop_the_engine()
 
     def _remember_cards(self, request: Request) -> None:
         """Keep every card this seat has been told about.
@@ -375,6 +437,10 @@ class MatchServer:
         started: float,
         fallback_reason: str,
     ) -> None:
+        with self._lock:
+            self.result.decisions += 1
+            if response is None:
+                self.result.fallbacks += 1
         self.transcript.record_decision(
             match_id=self.match_id,
             seat=request.seat,
@@ -459,6 +525,10 @@ class MatchServer:
         if op == "status":
             return self._status()
         if op == "stop":
+            # The engine first. shutdown() closes the sockets, and on its own
+            # that leaves Forge playing out the games it was told to play with
+            # nothing listening.
+            self._stop_the_engine()
             self.shutdown()
             return {"status": "stopped"}
         if op != "act":

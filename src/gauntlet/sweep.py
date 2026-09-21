@@ -40,6 +40,10 @@ class Pairing:
     error: str = ""
     #: Set when a seat ran out of capacity. The numbers are not usable.
     exhausted: bool = False
+    #: Share of decisions the seat did not answer. A high one means Forge
+    #: played the games, whatever the record says.
+    fallback_rate: float = 0.0
+    decisions: int = 0
 
     @property
     def played(self) -> int:
@@ -136,6 +140,15 @@ def run_pairing(
         pairing.error = result.error
     if getattr(result, "exhausted", None):
         pairing.exhausted = True
+    pairing.decisions = result.decisions
+    pairing.fallback_rate = result.fallback_rate
+    if not result.trustworthy:
+        pairing.exhausted = True
+        if not pairing.error:
+            pairing.error = (
+                f"{result.fallback_rate:.0%} of decisions fell back to Forge, "
+                "this is not an agent result"
+            )
     return pairing
 
 
@@ -248,10 +261,17 @@ def format_table(deck: str, results: list[Pairing], elapsed: float) -> str:
     if spent:
         lines += [
             "",
-            "WARNING: a seat ran out of capacity during this sweep, so some or all",
-            "of these games were played by Forge's AI rather than the seat named.",
-            "Do not read these numbers as an agent result.",
+            "WARNING: one or more pairings were not played by the seat named. Some or",
+            "all of these games were Forge's AI. Do not read them as an agent result.",
         ]
+        for p in spent:
+            lines.append(f"  {p.opponent}: {p.error or 'seat ran out of capacity'}")
+
+    noisy = [p for p in results if not p.exhausted and p.fallback_rate > 0.05]
+    if noisy:
+        lines += ["", "Some decisions fell back to Forge:"]
+        for p in noisy:
+            lines.append(f"  {p.opponent}: {p.fallback_rate:.0%} of {p.decisions}")
     if draws:
         # A draw here is usually a game that hit the clock, not a real draw.
         # Treating it as half a win would flatter a deck that stalls out.

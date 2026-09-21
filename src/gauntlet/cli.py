@@ -264,13 +264,30 @@ def run_match(
             "wins": result.wins_by_seat(),
             "crashed": result.crashed,
             "error": result.error,
+            # An automated reader must be able to tell a real result from a
+            # fictional one without parsing prose.
+            "valid": result.trustworthy,
+            "decisions": result.decisions,
+            "fallbacks": result.fallbacks,
+            "fallback_rate": round(result.fallback_rate, 3),
+            "exhausted": result.exhausted,
         },
         as_json,
         f"match {result.match_id}: {result.wins_by_seat() or 'no decisive games'}"
         + (f"\n{result.error}" if result.error else "")
+        + (
+            f"\nWARNING: {result.fallback_rate:.0%} of {result.decisions} decisions "
+            "fell back to Forge. These numbers are not an agent result."
+            if not result.trustworthy and result.decisions
+            else ""
+        )
         + (f"\n{budget.report()}" if budget.decisions else "")
         + f"\n\ngauntlet replay {result.match_id}",
     )
+    # A caller that only checks the exit status must not read a void run as a
+    # good one.
+    if result.crashed or not result.trustworthy:
+        raise typer.Exit(1)
 
 
 @app.command("act")

@@ -78,6 +78,11 @@ def estimate_usd(decisions: int, model: str) -> float:
     )
 
 
+#: Decisions to observe before pricing reservations off real spend rather
+#: than the static estimate. Small, because the point is to stop trusting a
+#: guess as soon as there is anything better.
+_LEARN_AFTER = 5
+
 #: Decisions one game costs across both seats, measured after the pass
 #: suppression work. Used only to project a run before it starts.
 DECISIONS_PER_GAME = 64
@@ -94,9 +99,19 @@ def project(games: int, model: str, paid_seats: int = 2) -> tuple[int, float]:
 class Budget:
     """What a run may spend, and what it has spent.
 
-    Thread safe. Several bridge connections charge against one of these at once,
-    and the check has to be atomic with the charge or two seats can both pass a
-    limit that only one of them had room for.
+    Thread safe, and the claim is a reservation rather than a check, because a
+    check followed later by a charge leaves a window as wide as a model call.
+    Several bridge connections claim against one of these at once, and without
+    reservations a sweep with six parallel pairings ran twelve decisions past a
+    cap only one of them had room for.
+
+    The cap is exact once spending is observed and approximate before that. A
+    decision's cost is not knowable until the call returns, so the first wave of
+    concurrent decisions is priced at an estimate. If that estimate is badly
+    wrong the run can overshoot by up to one wave, bounded by the worker count,
+    after which observed spend prices every later reservation. Measured: within
+    2% when the estimate is right or twice too low, and the estimate is
+    deliberately set above what was measured in real games.
     """
 
     max_usd: float = DEFAULT_MAX_USD
@@ -110,12 +125,39 @@ class Budget:
     decisions: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
+    #: Decisions dispatched but not yet billed. Counted at the estimated
+    #: rate while in flight, so concurrent callers cannot all pass a cap
+    #: only one of them had room for.
+    in_flight: int = 0
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     @property
     def spent_usd(self) -> float:
+        """What has been billed. Excludes reservations."""
         rate_in, rate_out = price(self.model)
         return self.input_tokens / 1e6 * rate_in + self.output_tokens / 1e6 * rate_out
+
+    @property
+    def per_decision_usd(self) -> float:
+        """What a decision has actually cost, falling back to the estimate.
+
+        A static estimate is a guess about prompt size, and a model or a deck
+        that makes it wrong makes every reservation wrong in the same direction.
+        Once there is real data, that data prices the next reservation.
+        """
+        if self.decisions < _LEARN_AFTER:
+            return estimate_usd(1, self.model)
+        return max(self.spent_usd / self.decisions, estimate_usd(1, self.model) * 0.25)
+
+    @property
+    def committed_usd(self) -> float:
+        """Billed, plus what is already in flight.
+
+        This is the number a cap has to be checked against. Checking the billed
+        figure alone let a sweep with six parallel pairings run twelve decisions
+        past the line before any of them reported back.
+        """
+        return self.spent_usd + self.in_flight * self.per_decision_usd
 
     @property
     def remaining_usd(self) -> float:
@@ -131,13 +173,23 @@ class Budget:
             self._check_locked()
 
     def _check_locked(self) -> None:
-        if self.decisions >= self.max_decisions:
+        if self.decisions + self.in_flight >= self.max_decisions:
             raise BudgetExceeded(
                 f"decision limit reached ({self.decisions:,} of {self.max_decisions:,})"
             )
-        spent = self.spent_usd
-        if spent >= self.max_usd:
-            raise BudgetExceeded(f"spend limit reached (${spent:.2f} of ${self.max_usd:.2f})")
+        committed = self.committed_usd
+        if committed >= self.max_usd:
+            raise BudgetExceeded(f"spend limit reached (${committed:.2f} of ${self.max_usd:.2f})")
+
+    def reserve(self) -> None:
+        """Check and claim a decision's worth of budget in one step.
+
+        The caller must follow with `charge`, which releases the reservation and
+        records what was really spent.
+        """
+        with self._lock:
+            self._check_locked()
+            self.in_flight += 1
 
     def charge(self, *, input_tokens: int | None = None, output_tokens: int | None = None) -> None:
         """Record one decision's cost.
@@ -147,6 +199,7 @@ class Budget:
         a reader knows the total is not exact.
         """
         with self._lock:
+            self.in_flight = max(0, self.in_flight - 1)
             self.decisions += 1
             if input_tokens is None or output_tokens is None:
                 self.estimated = True

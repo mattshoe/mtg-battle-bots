@@ -49,6 +49,10 @@ class Seat(ABC):
     #: What the transcript records as having played this seat.
     controller: str = "unknown"
 
+    #: Whether answering costs money or quota. Only these are billed against
+    #: a run's budget, so a free seat cannot exhaust a paid one's cap.
+    costs_money: bool = False
+
     @abstractmethod
     def decide(self, request: Request, timeout: float) -> Response:
         """Answer, or raise :class:`SeatTimeout`.
@@ -216,6 +220,41 @@ class InteractiveSeat(Seat):
             pending.answered.set()
 
 
+#: Failures that mean a paid seat cannot continue, as they appear in the SDK's
+#: exception text. Shared with the sdk seat rather than duplicated, because two
+#: lists in two files disagreed and the disagreement was invisible.
+#:
+#: Anything not here is treated as one bad decision. That is the safe default
+#: for an unrecognised error: a run that stops early can be restarted, a run
+#: that carries on quietly cannot be trusted afterwards.
+FATAL_API_ERRORS = (
+    "authentication",
+    "unauthorized",
+    "permission_error",
+    "invalid_api_key",
+    "rate_limit",
+    # Both spellings. The SDK writes one and the CLI writes the other, and
+    # unifying the two lists dropped this one, which a test caught.
+    "rate limit",
+    "quota",
+    "credit balance",
+    "insufficient",
+    "overloaded_error",
+    "service unavailable",
+    "connection error",
+    "429",
+    "401",
+    "403",
+    "529",
+)
+
+
+def is_fatal_api_error(message: str) -> bool:
+    """Whether this failure ends the seat rather than costing one decision."""
+    lowered = message.lower()
+    return any(marker in lowered for marker in FATAL_API_ERRORS)
+
+
 def _int(value: object) -> int:
     """A token count that may be absent, None, or a number.
 
@@ -250,6 +289,7 @@ class ApiSeat(Seat):
     """
 
     controller = "api"
+    costs_money = True
 
     def __init__(
         self,
@@ -308,8 +348,7 @@ class ApiSeat(Seat):
             # A quota or credit failure is not one bad decision, it is every
             # remaining one. Say so, so the run stops instead of finishing with
             # Forge's AI wearing this seat's name.
-            text = str(exc).lower()
-            if any(m in text for m in ("rate_limit", "quota", "credit balance", "insufficient")):
+            if is_fatal_api_error(str(exc)):
                 raise SeatExhausted(f"api seat cannot continue: {exc}") from exc
             raise SeatTimeout(f"api call failed: {exc}") from exc
 

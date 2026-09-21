@@ -117,6 +117,7 @@ def test_budget_stops_the_run_before_it_overspends(tmp_path) -> None:
 
     class _FreeSeat(Seat):
         controller = "api"
+        costs_money = True
         last_usage = (1000, 50)
 
         def decide(self, request: Request, timeout: float):

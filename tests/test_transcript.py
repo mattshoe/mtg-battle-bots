@@ -237,20 +237,27 @@ def test_fallback_is_marked_in_render(db: Path) -> None:
     assert summarise("m1", db)["fallbacks"] == 1
 
 
-def test_fallback_keeps_the_choice_forge_made(db: Path) -> None:
+def test_a_fallback_carrying_a_response_is_refused(db: Path) -> None:
+    """The invariant, enforced where the row is written.
+
+    A fallback is Forge's play. Recording one with a seat's response would put
+    Forge's choice and a seat's reasoning in the same row, which is the single
+    thing this transcript must never say. The previous version of this test
+    asserted the rendered output of exactly that row, so it documented the hole
+    rather than closing it.
+    """
     t = started(db)
-    t.record_decision(
-        match_id="m1",
-        seat="B",
-        request=Request.parse(line(id=10, seat="B")),
-        response=Response(id=10, choice=0, why=""),
-        latency_ms=12,
-        fallback=True,
-        fallback_reason="invalid answer",
-    )
+    with pytest.raises(ValueError, match="fallback cannot carry a response"):
+        t.record_decision(
+            match_id="m1",
+            seat="B",
+            request=Request.parse(line(id=10, seat="B")),
+            response=Response(id=10, choice=0, why="my own reasoning"),
+            latency_ms=12,
+            fallback=True,
+            fallback_reason="invalid answer",
+        )
     t.close()
-    out = render("m1", db)
-    assert "**B** main1 · Pass priority (Forge AI decided — invalid answer)" in out
 
 
 def test_summarise_counts(db: Path) -> None:
@@ -260,7 +267,8 @@ def test_summarise_counts(db: Path) -> None:
             match_id="m1",
             seat=seat,
             request=Request.parse(line(id=i, seat=seat)),
-            response=Response(id=i, choice=0, why="thinking"),
+            # A fallback carries no response, which the writer now enforces.
+            response=None if i == 4 else Response(id=i, choice=0, why="thinking"),
             latency_ms=latency,
             fallback=(i == 4),
             fallback_reason="timed out" if i == 4 else "",
