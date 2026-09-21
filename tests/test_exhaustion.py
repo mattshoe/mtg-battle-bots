@@ -158,3 +158,75 @@ def test_budget_stops_the_run_before_it_overspends(tmp_path) -> None:
         assert stopped.is_set(), "an over-budget run left the engine going"
     finally:
         server.shutdown()
+
+
+# --------------------------------------------------------------- the cost gate
+
+
+class _Refused(Exception):
+    pass
+
+
+def _gate(monkeypatch, *, tty: bool, **kw):
+    """Run the cost gate with a known stdin, returning the budget or raising."""
+    import sys as _sys
+
+    import typer
+
+    from gauntlet import cli
+
+    monkeypatch.setattr(_sys.stdin, "isatty", lambda: tty, raising=False)
+
+    def boom(msg: str) -> None:
+        raise _Refused(msg)
+
+    monkeypatch.setattr(cli, "_fail", boom)
+    monkeypatch.setattr(typer, "echo", lambda *a, **k: None)
+    return cli._preflight(**kw)
+
+
+BASE = {"games": 40, "model": "claude-haiku-4-5", "max_cost": 5.0}
+
+
+def test_free_run_is_never_gated(monkeypatch) -> None:
+    b = _gate(monkeypatch, tty=False, seats=["forge", "forge"], yes=False, **BASE)
+    assert b.max_usd == float("inf")
+
+
+def test_paid_run_without_a_terminal_refuses_rather_than_hanging(monkeypatch) -> None:
+    """The regression. typer.confirm blocks forever on a pipe, so a scripted
+    run hung for as long as anyone let it instead of refusing."""
+    with pytest.raises(_Refused, match="no terminal"):
+        _gate(monkeypatch, tty=False, seats=["sdk", "sdk"], yes=False, **BASE)
+
+
+def test_explicit_yes_passes_without_a_terminal(monkeypatch) -> None:
+    b = _gate(monkeypatch, tty=False, seats=["sdk", "sdk"], yes=True, **BASE)
+    assert b.max_usd == 5.0
+
+
+def test_projection_over_the_cap_refuses_even_with_yes(monkeypatch) -> None:
+    with pytest.raises(_Refused, match="over the"):
+        _gate(
+            monkeypatch,
+            tty=False,
+            seats=["api", "api"],
+            yes=True,
+            games=160,
+            model="claude-haiku-4-5",
+            max_cost=5.0,
+        )
+
+
+def test_declining_the_prompt_refuses(monkeypatch) -> None:
+    import typer
+
+    monkeypatch.setattr(typer, "confirm", lambda *a, **k: False)
+    with pytest.raises(_Refused, match="cancelled"):
+        _gate(monkeypatch, tty=True, seats=["sdk", "sdk"], yes=False, **BASE)
+
+
+def test_the_default_cap_is_five_dollars() -> None:
+    from gauntlet.budget import DEFAULT_MAX_USD
+
+    assert DEFAULT_MAX_USD == 5.00

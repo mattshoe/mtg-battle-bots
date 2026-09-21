@@ -36,9 +36,14 @@ PRICING: dict[str, tuple[float, float]] = {
 EST_INPUT_TOKENS = 1200
 EST_OUTPUT_TOKENS = 80
 
-#: Spend ceiling for a run that did not name one. Generous enough for the runs
-#: people actually ask for, small enough that a bug cannot empty an account.
-DEFAULT_MAX_USD = 10.00
+#: Hard cap on what a run may spend unless the caller names a higher one.
+#:
+#: Five dollars, set deliberately low. Two runs have already overrun without
+#: anyone noticing, so the default is chosen to make the next mistake cheap
+#: rather than to let a big run through without asking. A run that needs more
+#: says so with --max-cost, which is an explicit decision rather than a default
+#: nobody looked at.
+DEFAULT_MAX_USD = 5.00
 
 #: A decision ceiling as well as a dollar one, because a pricing table that has
 #: drifted, or a seat kind with no pricing at all, must still be bounded.

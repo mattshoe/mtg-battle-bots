@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 from typing import Annotated
 
+import click
 import typer
 
 from . import budget as budgetmod
@@ -93,11 +94,16 @@ def export_deck(
 def _preflight(
     *, games: int, seats: list[str], model: str, max_cost: float, yes: bool
 ) -> budgetmod.Budget:
-    """Show what a run will cost before it costs it, and get a yes.
+    """Say what a run will cost before it costs anything, and get a yes.
 
-    Two runs have already overrun without anyone noticing until afterwards. The
-    fix is the same in both directions: say the number up front, and enforce it
-    while running.
+    Called before any deck is written and before any process starts, so a run
+    that is refused here has done nothing at all.
+
+    Fails closed. Every path that is not an explicit yes is a no, including the
+    one where there is nobody to ask. An earlier version prompted with
+    `typer.confirm`, which blocks forever when stdin is not a terminal, so a
+    scripted run hung instead of refusing. A gate that hangs is broken, and one
+    that can be passed by hanging is worse than none.
     """
     paid = [k for k in seats if k in ("api", "sdk")]
     if not paid:
@@ -112,17 +118,31 @@ def _preflight(
     typer.echo(f"{games} game(s), {len(paid)} paid seat(s) on {model}")
     typer.echo(f"  ~{decisions:,} decisions, ~${dollars:.2f} {currency}")
     if not via_key:
-        typer.echo("  the sdk seat spends session quota, not money, so the dollar")
-        typer.echo("  figure is what it would cost on an API key")
-    typer.echo(f"  hard limit ${max_cost:.2f}, the run stops there")
+        typer.echo("  the sdk seat spends session quota rather than money, so the")
+        typer.echo("  dollar figure is what it would cost on an API key")
+    typer.echo(f"  HARD CAP ${max_cost:.2f}, the run stops there")
 
     if dollars > max_cost:
         _fail(
-            f"projected ${dollars:.2f} exceeds the ${max_cost:.2f} limit. "
+            f"projected ${dollars:.2f} is over the ${max_cost:.2f} cap. "
             f"Raise it with --max-cost, or run fewer games."
         )
-    if not yes and dollars >= 1.0:
-        typer.confirm("proceed?", abort=True)
+
+    if yes:
+        return budgetmod.Budget(max_usd=max_cost, model=model)
+
+    if not sys.stdin.isatty():
+        _fail(
+            "this run spends, and there is no terminal to confirm at. "
+            "Pass --yes to say so explicitly."
+        )
+
+    try:
+        confirmed = typer.confirm("proceed?", default=False)
+    except (EOFError, KeyboardInterrupt, click.exceptions.Abort):
+        confirmed = False
+    if not confirmed:
+        _fail("cancelled, nothing was run")
 
     return budgetmod.Budget(max_usd=max_cost, model=model)
 
@@ -152,7 +172,7 @@ def run_match(
     game_timeout: Annotated[int, typer.Option(help="Seconds before a draw is called.")] = 900,
     model: Annotated[str, typer.Option(help="Model for api and sdk seats.")] = "claude-haiku-4-5",
     max_cost: Annotated[
-        float, typer.Option(help="Hard spend limit in dollars. The run stops there.")
+        float, typer.Option(help="Hard cap in dollars. The run stops there. Default $5.")
     ] = budgetmod.DEFAULT_MAX_USD,
     yes: Annotated[bool, typer.Option("--yes", "-y", help="Skip the cost prompt.")] = False,
     owner: Annotated[str | None, typer.Option(help="Collection owner for deck lookup.")] = None,
@@ -383,7 +403,7 @@ def sweep_cmd(
     decision_timeout: Annotated[int, typer.Option(help="Seconds a seat may think.")] = 300,
     model: Annotated[str, typer.Option(help="Model for api and sdk seats.")] = "claude-haiku-4-5",
     max_cost: Annotated[
-        float, typer.Option(help="Hard spend limit for the whole sweep.")
+        float, typer.Option(help="Hard cap for the whole sweep. Default $5.")
     ] = budgetmod.DEFAULT_MAX_USD,
     yes: Annotated[bool, typer.Option("--yes", "-y", help="Skip the cost prompt.")] = False,
     as_json: Annotated[bool, typer.Option("--json")] = False,
