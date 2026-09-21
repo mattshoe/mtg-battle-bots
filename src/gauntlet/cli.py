@@ -442,7 +442,15 @@ def sweep_cmd(
         except Exception as exc:
             _fail(f"could not read the collection: {exc}")
             return
-        opponents = [r.slug for r in rows if r.slug != deck]
+        # --deck accepts a slug or a name, so excluding by slug alone let a
+        # deck named rather than slugged play itself, and the mirror match's
+        # 50% went into the headline rate.
+        wanted = deck.strip().casefold()
+        opponents = [
+            r.slug
+            for r in rows
+            if r.slug.casefold() != wanted and (r.name or "").strip().casefold() != wanted
+        ]
     else:
         opponents = [o.strip() for o in against.split(",") if o.strip()]
 

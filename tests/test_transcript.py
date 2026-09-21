@@ -411,3 +411,47 @@ def test_writes_land_before_close(db: Path) -> None:
     )
     assert "> Committed." in render("m1", db)
     t.close()
+
+
+def test_the_extra_column_keeps_what_this_version_does_not_model(db: Path) -> None:
+    """`since` and `proposed` live here.
+
+    The forward-compatibility guarantee the protocol tests establish at the
+    parse layer was dropped at the storage layer, and blanking the column
+    survived as a mutation.
+    """
+    import json as jsonlib
+    import sqlite3
+
+    t = started(db)
+    request = Request.parse(
+        jsonlib.dumps(
+            {
+                "v": VERSION,
+                "id": 3,
+                "seat": "A",
+                "kind": "cast_or_pass",
+                "prompt": "priority",
+                "options": [{"i": 0, "label": "Pass priority"}],
+                "state": {"turn": 2},
+                "since": ["A draws a card", "A plays Forest"],
+                "proposed": ["tempest-hawk"],
+            }
+        )
+    )
+    t.record_decision(
+        match_id="m1",
+        seat="A",
+        request=request,
+        response=Response(id=3, choice=0, why="holding"),
+        latency_ms=5,
+    )
+    t.close()
+
+    conn = sqlite3.connect(db)
+    raw = conn.execute("SELECT extra FROM decisions WHERE request_id = 3").fetchone()[0]
+    conn.close()
+
+    stored = jsonlib.loads(raw)
+    assert stored["since"] == ["A draws a card", "A plays Forest"]
+    assert stored["proposed"] == ["tempest-hawk"]

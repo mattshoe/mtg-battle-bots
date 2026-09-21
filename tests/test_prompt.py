@@ -294,3 +294,82 @@ def test_parse_reply_rejects_a_choice_that_is_not_on_offer() -> None:
 def test_parse_reply_rejects_a_reply_with_no_number_in_it() -> None:
     with pytest.raises(ProtocolError, match="no CHOICE in reply"):
         parse_reply("I think we should probably just pass here.", request())
+
+
+# --------------------------------- the two fixes with prose but no test
+
+# Both of these are documented incidents in CLAUDE.md and both could be deleted
+# with the suite green. No test had ever passed a `since` or a `combat` key.
+
+
+def test_combat_is_rendered_so_a_seat_can_see_what_is_attacking() -> None:
+    """A seat asked to block used to be shown a board where the only clue was
+    which creatures happened to be tapped, and vigilance removed even that."""
+    state = {
+        "turn": 8,
+        "phase": "combat_declare_blockers",
+        "active": "B",
+        "you": "A",
+        "me": {"life": 34, "library": 70},
+        "combat": [
+            {"c": "scourge-of-fleets", "pt": "6/6", "attacking": "A"},
+            {
+                "c": "anowon-the-ruin-thief",
+                "pt": "2/4",
+                "attacking": "A",
+                "blocked_by": ["tempest-hawk"],
+            },
+        ],
+    }
+    cards = {
+        "scourge-of-fleets": {"name": "Scourge of Fleets"},
+        "anowon-the-ruin-thief": {"name": "Anowon, the Ruin Thief"},
+        "tempest-hawk": {"name": "Tempest Hawk"},
+    }
+    out = render_state(state, cards)
+
+    assert "In combat:" in out
+    assert "Scourge of Fleets 6/6 attacking A" in out
+    assert "Anowon, the Ruin Thief 2/4 attacking A, blocked by Tempest Hawk" in out
+
+
+def test_no_combat_block_when_nothing_is_attacking() -> None:
+    out = render_state({"turn": 3, "phase": "main1", "active": "A", "me": {}}, {})
+    assert "In combat:" not in out
+
+
+def test_what_happened_since_the_last_decision_is_shown() -> None:
+    """Forge chooses targets, so a spell a seat picked can fizzle or hit
+    something else, and the board alone cannot say which. Without this feed a
+    removal spell left hand and mana and killed nothing, silently."""
+    from gauntlet.prompt import render_since
+
+    events = [
+        "A casts Price of Fame targeting Jetmir, Nexus of Revels",
+        "Price of Fame fizzles, no legal target",
+    ]
+    out = render_since(events)
+    assert "Since your last decision:" in out
+    assert "fizzles" in out
+    assert render_since([]) == ""
+
+
+def test_the_since_feed_reaches_the_built_prompt() -> None:
+    """render_since existing is not the same as build_prompt using it."""
+    request = Request.parse(
+        json.dumps(
+            {
+                "v": VERSION,
+                "id": 1,
+                "seat": "A",
+                "kind": "cast_or_pass",
+                "prompt": "priority",
+                "options": [{"i": 0, "label": "Pass priority"}],
+                "state": {"turn": 5, "phase": "main1", "active": "A", "me": {}},
+                "since": ["B's Combat Damage Step", "A loses 6 life"],
+            }
+        )
+    )
+    built = build_prompt(request, {})
+    assert "Since your last decision:" in built
+    assert "A loses 6 life" in built

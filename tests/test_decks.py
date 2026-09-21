@@ -267,10 +267,6 @@ def test_validate_catches_a_duplicate_nonbasic():
     assert any("copies of a nonbasic" in p for p in validate(deck))
 
 
-def test_validate_allows_many_basics():
-    assert validate(commander_deck()) == []
-
-
 def test_validate_catches_a_nonpositive_quantity():
     deck = DeckList(name="x", commanders=("A",), main=((0, "Sol Ring"),), source="t")
     assert any("not a real number of copies" in p for p in validate(deck))

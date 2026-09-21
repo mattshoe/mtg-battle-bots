@@ -122,3 +122,118 @@ def test_the_command_is_a_list_of_strings_subprocess_can_take() -> None:
     fails at launch rather than at build time."""
     cmd = build_command(_seats(), seed=99, games=3)
     assert all(isinstance(part, str) for part in cmd), cmd
+
+
+# ------------------------------------------- the process, not just the command
+
+# Everything below build_command was untested, and every mutation survived:
+# losing the Forge working directory, never draining the log pump, deleting the
+# kill escalation, dropping the noise filter. Each is a documented past
+# incident. These use short-lived shell commands, no JVM.
+
+
+def test_output_reaches_the_callback_and_the_log(tmp_path) -> None:
+    from gauntlet.engine import launch
+
+    seen: list[str] = []
+    log = tmp_path / "forge.log"
+    run = launch(["/bin/sh", "-c", "echo one; echo two"], log, on_line=seen.append)
+
+    assert run.wait(timeout=10) == 0
+    assert seen == ["one", "two"]
+    assert "one" in log.read_text()
+
+
+def test_wait_does_not_return_until_the_output_is_read(tmp_path) -> None:
+    """The process exiting is not the output being handled.
+
+    A slow callback, which an ordinary contended sqlite write is, dropped
+    results Forge had already printed and left a six-game run reporting one.
+    """
+    import time
+
+    from gauntlet.engine import launch
+
+    seen: list[str] = []
+
+    def slow(line: str) -> None:
+        time.sleep(0.15)
+        seen.append(line)
+
+    run = launch(["/bin/sh", "-c", "echo a; echo b; echo c"], tmp_path / "l.log", on_line=slow)
+    run.wait(timeout=10)
+    assert seen == ["a", "b", "c"], f"output was dropped: {seen}"
+
+
+def test_a_callback_that_raises_does_not_kill_the_pump(tmp_path) -> None:
+    """If the pump dies, Forge blocks on a full pipe buffer and the match hangs
+    forever, which is the deadlock the thread exists to prevent."""
+    from gauntlet.engine import launch
+
+    seen: list[str] = []
+
+    def explode(line: str) -> None:
+        if line == "a":
+            raise RuntimeError("database is locked")
+        seen.append(line)
+
+    run = launch(["/bin/sh", "-c", "echo a; echo b; echo c"], tmp_path / "l.log", on_line=explode)
+    run.wait(timeout=10)
+    assert seen == ["b", "c"], "one bad line killed the reader"
+    assert run.drain(timeout=5)
+
+
+def test_noise_forge_prints_on_every_start_is_filtered(tmp_path) -> None:
+    from gauntlet.engine import launch
+
+    seen: list[str] = []
+    run = launch(
+        ["/bin/sh", "-c", "echo 'Read cards: 33617 files'; echo 'real line'"],
+        tmp_path / "l.log",
+        on_line=seen.append,
+    )
+    run.wait(timeout=10)
+    assert seen == ["real line"]
+
+
+def test_stop_escalates_to_a_kill(tmp_path) -> None:
+    """A hung JVM is the normal reason a match will not end, so the escalation
+    is not optional. Deleting kill() survived."""
+    from gauntlet.engine import launch
+
+    # Ignores SIGTERM, so only kill() ends it.
+    run = launch(["/bin/sh", "-c", "trap '' TERM; sleep 30"], tmp_path / "l.log")
+    assert run.running
+    run.stop(grace=0.5)
+    assert not run.running, "a process that ignored terminate was never killed"
+
+
+def test_forge_runs_from_its_own_install_directory(tmp_path, monkeypatch) -> None:
+    """Forge reads card data relative to the working directory. Getting this
+    wrong fails several frames deep as a missing resource bundle."""
+    from gauntlet import engine
+    from gauntlet.engine import launch
+
+    home = tmp_path / "forge-home"
+    home.mkdir()
+    monkeypatch.setattr(engine.paths, "vendor_dir", lambda: home)
+
+    seen: list[str] = []
+    run = launch(["/bin/sh", "-c", "pwd"], tmp_path / "l.log", on_line=seen.append)
+    run.wait(timeout=10)
+    assert seen and seen[0].endswith("forge-home")
+
+
+def test_trace_is_passed_to_the_child_only_when_asked(tmp_path) -> None:
+    from gauntlet.engine import launch
+
+    for trace, expected in ((True, "1"), (False, "")):
+        seen: list[str] = []
+        run = launch(
+            ["/bin/sh", "-c", "echo ${GAUNTLET_TRACE:-}"],
+            tmp_path / f"l{trace}.log",
+            on_line=seen.append,
+            trace=trace,
+        )
+        run.wait(timeout=10)
+        assert seen == [expected] if expected else seen in ([], [""])

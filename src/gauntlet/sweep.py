@@ -242,6 +242,16 @@ def run_sweep(
                     halt.set()
                     for pending in futures:
                         pending.cancel()
+                    # Account for the rest of the field rather than dropping it.
+                    # A sweep that stopped early used to report only what it
+                    # finished, so eight opponents came back as two with no
+                    # mention of the six.
+                    reported = {p.opponent for p in done}
+                    for skipped in pairings:
+                        if skipped.opponent not in reported:
+                            skipped.exhausted = True
+                            skipped.error = "not played, the sweep stopped before reaching it"
+                            done.append(skipped)
                     break
     finally:
         transcript.close()
@@ -255,9 +265,13 @@ def run_sweep(
 def format_table(deck: str, results: list[Pairing], elapsed: float) -> str:
     """The sweep as something a person reads and acts on."""
     played = sum(p.played for p in results)
-    wins = sum(p.wins for p in results)
-    losses = sum(p.losses for p in results)
-    draws = sum(p.draws for p in results)
+    # Only pairings the seat actually played count toward the headline. Summing
+    # void ones reported a deck that went 1-3 as 79%, with the warning printed
+    # underneath the number.
+    counted = [p for p in results if not p.exhausted]
+    wins = sum(p.wins for p in counted)
+    losses = sum(p.losses for p in counted)
+    draws = sum(p.draws for p in counted)
     decisive = wins + losses
 
     width = max((len(p.opponent) for p in results), default=10)
@@ -275,7 +289,11 @@ def format_table(deck: str, results: list[Pairing], elapsed: float) -> str:
         lines.append(f"{p.opponent:<{width}}  {record:>9}  {p.win_rate:>5.0%}  {p.median_turns:>5}")
 
     overall = wins / decisive if decisive else 0.0
-    lines += ["", f"overall {wins}-{losses}-{draws}, {overall:.0%} of decisive games"]
+    excluded = len(results) - len(counted)
+    summary = f"overall {wins}-{losses}-{draws}, {overall:.0%} of decisive games"
+    if excluded:
+        summary += f" (excludes {excluded} pairing(s) the seat did not play)"
+    lines += ["", summary]
 
     spent = [p for p in results if p.exhausted]
     if spent:

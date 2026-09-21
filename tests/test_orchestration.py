@@ -27,34 +27,6 @@ def deck_file(tmp_path) -> Path:
     return p
 
 
-@pytest.fixture
-def _isolated(tmp_path, monkeypatch):
-    """Keep every path this writes to inside tmp_path."""
-    from gauntlet import paths
-
-    for name, sub in (
-        ("deck_cache", "decks"),
-        ("state_dir", "state"),
-        ("data_dir", "data"),
-    ):
-        target = tmp_path / sub
-        target.mkdir(parents=True, exist_ok=True)
-        monkeypatch.setattr(paths, name, lambda t=target: t)
-    monkeypatch.setattr(paths, "transcripts_db", lambda: tmp_path / "t.db")
-    # match_socket is deliberately left alone. pytest's tmp_path is long
-    # enough to exceed the AF_UNIX limit, which is exactly the case the real
-    # function handles, so overriding it here would hide the behaviour.
-    monkeypatch.setattr(paths, "match_meta", lambda m: tmp_path / "state" / f"{m}.json")
-    monkeypatch.setattr(paths, "forge_version", lambda: "test")
-    # Every jar is faked, so these run on a machine with no Forge install.
-    # Three of them failed in CI for exactly this reason while passing locally.
-    for name in ("bridge_jar", "forge_jar", "gson_jar"):
-        jar = tmp_path / f"{name}.jar"
-        jar.write_text("")
-        monkeypatch.setattr(paths, name, lambda j=jar: j)
-    return tmp_path
-
-
 class _FakeForge:
     """A Forge that reports results without playing anything.
 

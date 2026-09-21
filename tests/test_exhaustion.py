@@ -237,3 +237,95 @@ def test_the_default_cap_is_five_dollars() -> None:
     from gauntlet.budget import DEFAULT_MAX_USD
 
     assert DEFAULT_MAX_USD == 5.00
+
+
+# ------------------------------------------------ the budget's own machinery
+
+
+def test_an_unknown_model_prices_at_the_most_expensive_known_rate() -> None:
+    """Mutating max() to min() survived. Guessing low on an unfamiliar model is
+    how a budget stops being a budget."""
+    from gauntlet.budget import PRICING, price
+
+    unknown = price("claude-something-unreleased")
+    assert unknown == max(PRICING.values())
+    assert unknown > PRICING["claude-haiku-4-5"]
+
+
+def test_the_decision_ceiling_fires_independently_of_dollars() -> None:
+    """It exists for a drifted pricing table or a seat with no pricing at all,
+    and had never been observed to fire."""
+    from gauntlet.budget import Budget, BudgetExceeded
+
+    b = Budget(max_usd=float("inf"), max_decisions=3)
+    for _ in range(3):
+        b.check()
+        b.charge(input_tokens=1, output_tokens=1)
+    with pytest.raises(BudgetExceeded, match="decision limit"):
+        b.check()
+
+
+def test_concurrent_reservations_cannot_all_pass_one_slot() -> None:
+    """What reservations exist for, and what no test drove.
+
+    check() and charge() used to be separate critical sections with a model
+    call in between, so every worker in a sweep passed a cap one of them had
+    room for.
+    """
+    import threading
+
+    from gauntlet.budget import Budget, BudgetExceeded
+
+    b = Budget(max_usd=0.05, model="claude-haiku-4-5")
+    passed: list[int] = []
+    lock = threading.Lock()
+    ready = threading.Barrier(16)
+
+    def worker() -> None:
+        ready.wait(timeout=5)
+        try:
+            b.reserve()
+        except BudgetExceeded:
+            return
+        with lock:
+            passed.append(1)
+        b.charge(input_tokens=1030, output_tokens=60)
+
+    threads = [threading.Thread(target=worker) for _ in range(16)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=10)
+
+    # Every reservation is priced, so the cap bounds how many can be held at
+    # once. Without reservations all sixteen passed.
+    assert passed, "nobody got through at all"
+    assert b.committed_usd <= b.max_usd * 1.1, (
+        f"sixteen concurrent reservations overran the cap: {b.committed_usd}"
+    )
+
+
+def test_a_reservation_is_released_when_the_decision_is_billed() -> None:
+    """A reservation that is never released leaks the cap away."""
+    from gauntlet.budget import Budget
+
+    b = Budget(max_usd=5.0, model="claude-haiku-4-5")
+    b.reserve()
+    assert b.in_flight == 1
+    b.charge(input_tokens=1000, output_tokens=50)
+    assert b.in_flight == 0
+    assert b.decisions == 1
+
+
+def test_spend_without_real_counts_is_marked_estimated() -> None:
+    """A budget that reports an estimate as measured invites someone to trust
+    a figure nobody counted."""
+    from gauntlet.budget import Budget
+
+    b = Budget(max_usd=5.0)
+    b.charge()
+    assert b.estimated is True
+
+    exact = Budget(max_usd=5.0)
+    exact.charge(input_tokens=10, output_tokens=2)
+    assert exact.estimated is False

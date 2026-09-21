@@ -67,9 +67,18 @@ def test_bare_invocation_shows_help_rather_than_doing_something() -> None:
     ],
 )
 def test_every_command_has_help(command: str) -> None:
+    """Every command documents what it does.
+
+    The previous version accepted "Usage" alone, which typer prints for
+    everything, so it asserted only that --help did not crash.
+    """
     result = runner.invoke(app, [command, "--help"])
     assert result.exit_code == 0, result.output
-    assert command in result.output or "Usage" in result.output
+    assert "Usage" in result.output
+    # The summary line, which is the docstring, not the command name echoed
+    # back by the usage string.
+    body = result.output.split("Usage", 1)[1]
+    assert len(body.strip()) > 80, f"{command} has no help text of its own"
 
 
 # -------------------------------------------------------------- the cost gate
@@ -231,6 +240,9 @@ def test_export_warns_about_an_illegal_deck_without_refusing(_isolated, tmp_path
     result = runner.invoke(app, ["export", str(short), "-o", str(out)])
     assert result.exit_code == 0
     assert out.exists()
+    # The "warns" half of the name, which nothing checked.
+    assert "warning" in result.output.lower()
+    assert "100" in result.output or "cards" in result.output.lower()
 
 
 # ---------------------------------------------------------------- transcripts
@@ -276,14 +288,27 @@ def test_stopping_a_dead_match_fails_clearly(_isolated) -> None:
 # -------------------------------------------------------------------- doctor
 
 
-def test_doctor_reports_seat_readiness(_isolated) -> None:
+def test_doctor_reports_seat_readiness(_isolated, monkeypatch) -> None:
     """A missing key used to surface as a fallback on every decision, hours
-    into a run. Doctor is where that should be visible instead."""
+    into a run. Doctor is where that should be visible instead.
+
+    Asserted on the verdicts rather than the labels. The labels are static
+    strings in doctor's own output, so the previous version passed on an
+    install where every single check reported FAIL.
+    """
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     result = runner.invoke(app, ["doctor"])
-    assert "seats" in result.output
-    assert "forge" in result.output
-    assert "sdk" in result.output
-    assert "api" in result.output
+
+    # forge is always available, and the api seat has no key here.
+    assert "ok    forge" in result.output
+    assert "FAIL  api" in result.output
+    assert result.exit_code == 1, "doctor reported a failure and exited 0"
+
+
+def test_doctor_passes_when_the_api_seat_has_a_key(_isolated, monkeypatch) -> None:
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    result = runner.invoke(app, ["doctor"])
+    assert "ok    api" in result.output
 
 
 def test_doctor_exits_nonzero_when_something_is_broken(_isolated, monkeypatch) -> None:

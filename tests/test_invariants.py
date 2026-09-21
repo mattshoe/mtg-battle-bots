@@ -87,8 +87,14 @@ def test_a_clean_state_passes_the_leak_detector() -> None:
     )
 
 
-def test_the_state_a_seat_is_handed_carries_no_hidden_information(tmp_path) -> None:
-    """The gap that mattered.
+def test_the_daemon_forwards_whatever_state_view_sent(tmp_path) -> None:
+    """Named for what it actually asserts.
+
+    It used to be called "carries no hidden information" while its body proved
+    with pytest.raises that a leak reaches the agent untouched. That is a real
+    and useful characterisation, the daemon is a pass-through by design and the
+    defence lives in StateView, but the old name claimed a guarantee nobody
+    had.
 
     `server._control_op` returns `request.state` verbatim to an interactive
     agent. The only previous test was on the rendered prose, which ignores
@@ -143,6 +149,9 @@ def test_the_state_a_seat_is_handed_carries_no_hidden_information(tmp_path) -> N
             reply = call_match("leak", {"op": "act", "seat": "A", "timeout": 3})
 
         handed = reply["request"]["state"]
+        # A pass-through, verbatim. Which is why the Java-side assertions below
+        # are the thing actually defending this invariant.
+        assert handed == leaky
         with pytest.raises(AssertionError):
             assert_no_leak(handed)
     finally:
@@ -270,6 +279,14 @@ def test_forge_is_not_vendored_into_git() -> None:
     tracked = subprocess.run(
         ["git", "ls-files", "vendor/"], cwd=REPO, capture_output=True, text=True, check=False
     )
+    # A failed git call used to pass this vacuously, since its stdout is empty
+    # too. Prove git worked before believing what it said.
+    if tracked.returncode != 0:
+        pytest.skip(f"git is unavailable here: {tracked.stderr.strip()[:80]}")
+    proof = subprocess.run(
+        ["git", "ls-files", "src/"], cwd=REPO, capture_output=True, text=True, check=False
+    )
+    assert proof.stdout.strip(), "git listed no tracked files at all, so this proves nothing"
     assert not tracked.stdout.strip(), "Forge has been committed to the repository"
 
 
@@ -284,7 +301,10 @@ def test_the_licence_boundary_holds() -> None:
         assert "GNU General Public" not in text, f"{path.name} carries a GPL header"
 
     for path in JAVA.glob("*.java"):
-        assert "GPL" in path.read_text(), f"{path.name} is missing its GPL notice"
+        header = path.read_text()[:400]
+        assert "GPLv3" in header or "GPL-3" in header or "General Public" in header, (
+            f"{path.name} does not carry its licence in the header"
+        )
 
 
 def test_the_pinned_forge_version_matches_what_the_fetch_script_installs() -> None:
@@ -299,3 +319,51 @@ def test_the_pinned_forge_version_matches_what_the_fetch_script_installs() -> No
     assert installed == pinned.group(1), (
         f"installed Forge is {installed}, the script pins {pinned.group(1)}"
     )
+
+
+# ------------------------------- the four-step checklist, enforced mechanically
+
+
+def test_the_decision_kinds_agree_across_the_bridge() -> None:
+    """CLAUDE.md's checklist for adding a kind has four steps and only the
+    protocol version was ever checked.
+
+    Rename a kind in Java and Python keeps sending a name the bridge ignores,
+    so the seat is bridged, routed nothing, and plays no decisions.
+    """
+    from gauntlet.protocol import KINDS
+
+    controller = (JAVA / "PlayerControllerGauntlet.java").read_text()
+    java_kinds = set(re.findall(r'routes\("([a-z_]+)"\)', controller))
+
+    assert java_kinds, "no routed kinds found in PlayerControllerGauntlet.java"
+    assert java_kinds == set(KINDS), (
+        f"java routes {sorted(java_kinds)}, protocol.KINDS is {sorted(KINDS)}"
+    )
+
+
+def test_the_default_routed_set_agrees_across_the_bridge() -> None:
+    from gauntlet.match import DEFAULT_ROUTED
+
+    main = (JAVA / "GauntletMain.java").read_text()
+    block = main[main.index("DEFAULT_ROUTED") : main.index("public static void main")]
+    java_default = set(re.findall(r'"([a-z_]+)"', block))
+
+    assert java_default == set(DEFAULT_ROUTED), (
+        f"java defaults to {sorted(java_default)}, python to {sorted(DEFAULT_ROUTED)}"
+    )
+
+
+def test_state_view_keeps_your_own_library_a_count_too() -> None:
+    """The existing check slices only the opponent block, so the `me` block
+    could start sending your library order and nothing would fail.
+
+    Your own library is hidden from you as well, or a seat plays around its
+    own next draw.
+    """
+    source = (JAVA / "StateView.java").read_text()
+    start = source.index("JsonObject you = new JsonObject()")
+    me_block = source[start : source.index('o.add("me"')]
+
+    assert 'you.addProperty("library"' in me_block
+    assert 'you.add("library"' not in me_block, "StateView sends your own library order"

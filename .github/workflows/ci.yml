@@ -37,4 +37,4 @@ jobs:
         # printed FAIL and pytest still exited 0, so the job went green
         # with the words "Required test coverage not reached" in its log.
         # A gate that reports failure and passes is worse than no gate.
-        run: uv run --python 3.12 python -m pytest -q --cov --cov-fail-under=78
+        run: uv run --python 3.12 python -m pytest -q --cov --cov-fail-under=85
