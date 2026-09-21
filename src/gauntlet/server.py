@@ -239,7 +239,13 @@ class MatchServer:
         conn.settimeout(None)
         with conn, conn.makefile("rwb") as stream:
             while not self._stop.is_set():
-                line = stream.readline()
+                try:
+                    line = stream.readline()
+                except OSError:
+                    # The far end went away. Ordinary at the end of a match,
+                    # and not a reason to raise out of a thread whose death
+                    # hands the rest of the run to Forge.
+                    return
                 if not line:
                     return
                 try:
@@ -267,6 +273,9 @@ class MatchServer:
                     # decision itself with nothing recording that it did.
                     # A locked database is ordinary during a parallel sweep.
                     self.serving_errors.append(f"{type(exc).__name__}: {exc}")
+                    # Forge is about to play this one, so it is a fallback
+                    # whatever went wrong on the way here.
+                    self._tally(request.seat, answered=False)
                     with contextlib.suppress(Exception):
                         self.transcript.record_event(
                             match_id=self.match_id,
@@ -356,6 +365,17 @@ class MatchServer:
         if stop is not None:
             threading.Thread(target=stop, name="gauntlet-stop", daemon=True).start()
 
+    def _tally(self, seat: str, *, answered: bool) -> None:
+        """Count one decision against a seat.
+
+        Separate from recording it so a caller that could not write the row can
+        still count it correctly, which is the case that used to report a
+        Forge-played run as a clean one.
+        """
+        with self._lock:
+            asked, missed = self.result.per_seat.get(seat, (0, 0))
+            self.result.per_seat[seat] = (asked + 1, missed + (0 if answered else 1))
+
     def _charge(self, seat: Seat | None) -> None:
         """Bill one decision against the run's budget.
 
@@ -412,6 +432,8 @@ class MatchServer:
         if not request.new_cards:
             return
         with self._lock:
+            # Per seat. Sharing one map let a seat be handed the text of a card
+            # only its opponent had been shown.
             self._cards.setdefault(request.seat, {}).update(request.new_cards)
 
     def _cards_in_view(self, request: Request) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -429,6 +451,8 @@ class MatchServer:
         with self._lock:
             known = dict(self._cards.get(request.seat, {}))
 
+        # Options first: a card can be playable from a zone the state block
+        # does not list, and its name belongs in the list being chosen from.
         wanted: set[str] = {o.card for o in request.options if o.card}
 
         def walk(node: Any) -> None:
@@ -478,12 +502,9 @@ class MatchServer:
         started: float,
         fallback_reason: str,
     ) -> None:
-        with self._lock:
-            asked, missed = self.result.per_seat.get(request.seat, (0, 0))
-            self.result.per_seat[request.seat] = (
-                asked + 1,
-                missed + (1 if response is None else 0),
-            )
+        # Written first. Counting before the write meant a failed write left the
+        # decision tallied as answered while Forge actually played it, so a run
+        # that was entirely Forge's reported no fallbacks at all.
         self.transcript.record_decision(
             match_id=self.match_id,
             seat=request.seat,
@@ -493,6 +514,7 @@ class MatchServer:
             fallback=response is None,
             fallback_reason=fallback_reason,
         )
+        self._tally(request.seat, answered=response is not None)
 
     def record_game_result(self, payload: dict[str, Any]) -> None:
         """Record the end of one game, from whichever channel reported it.

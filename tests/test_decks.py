@@ -16,6 +16,7 @@ from gauntlet.decks import (
     DeckList,
     _default_db_dir,
     from_collection,
+    from_dck,
     from_text,
     list_collection_decks,
     parse_commander_field,
@@ -480,3 +481,43 @@ def test_fixture_deck_listing_works_without_a_real_collection() -> None:
     rows = list_collection_decks()
     assert {r.slug for r in rows} >= {"hawk-swarm", "doubled-face", "word-and"}
     assert all(r.owner == "tester" for r in rows)
+
+
+def test_a_dck_survives_a_round_trip(tmp_path) -> None:
+    """Write a deck, read it back, get the same deck.
+
+    Two things broke this and both shipped: from_dck kept the |SETCODE suffix,
+    which pins a printing Forge may spell differently and refuse, and the two
+    sides sorted differently so the card order drifted.
+    """
+    deck = DeckList(
+        name="round trip",
+        commanders=("Jetmir, Nexus of Revels",),
+        main=((1, "Sol Ring"), (60, "Plains"), (1, "arcane signet"), (1, "Dusk // Dawn")),
+        source="test",
+    )
+    path = write_dck(deck, tmp_path / "rt.dck")
+    back = from_dck(path)
+
+    assert back.commanders == deck.commanders
+    # Compared as contents. Order is normalised on both sides, and Forge does
+    # not care, but no card and no quantity may change.
+    assert dict((n, q) for q, n in back.main) == dict((n, q) for q, n in deck.main)
+    # And writing it again is byte-identical, which is what makes two runs of
+    # the same deck comparable.
+    assert to_dck(back) == to_dck(deck)
+
+
+def test_from_dck_drops_a_pinned_printing(tmp_path) -> None:
+    """Forge's own precons pin a set on every line, and a set its card data
+    spells differently is a deck that will not load."""
+    p = tmp_path / "pinned.dck"
+    p.write_text(
+        "[metadata]\nName=Pinned\n"
+        "[Commander]\n1 Killian, Decisive Mentor|SOC|1\n"
+        "[Main]\n8 Swamp|SOS|3\n1 War Room|SOC|1\n"
+    )
+    deck = from_dck(p)
+    assert deck.commanders == ("Killian, Decisive Mentor",)
+    assert (8, "Swamp") in deck.main
+    assert not any("|" in name for _, name in deck.main)

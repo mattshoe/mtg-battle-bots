@@ -158,19 +158,56 @@ def test_the_daemon_forwards_whatever_state_view_sent(tmp_path) -> None:
         server.shutdown()
 
 
-def test_state_view_sends_an_opponents_hand_as_a_count() -> None:
-    """Read off the Java, because that is the only writer of a state block.
+def test_state_view_sends_an_opponent_nothing_outside_the_allowed_keys() -> None:
+    """Every key StateView puts on an opponent, checked against the whitelist.
 
-    A leak introduced there would never be caught by a Python test that builds
-    its own fixtures.
+    The previous version grepped for two specific spellings, so adding
+    `op.add("hand_cards", refs(p.getCardsIn(ZoneType.Hand)))` shipped the
+    opponent's entire hand with the suite green. Reading the keys out and
+    comparing the set catches a leak under any name.
     """
     source = (JAVA / "StateView.java").read_text()
-    opponent_block = source[source.index("JsonArray opps") : source.index('o.add("opponents"')]
+    start = source.index("JsonArray opps")
+    block = source[start : source.index('o.add("opponents"')]
 
-    assert 'op.addProperty("hand_size"' in opponent_block
-    assert 'op.add("hand"' not in opponent_block, "StateView sends an opponent's hand"
-    assert 'op.addProperty("library"' in opponent_block
-    assert 'op.add("library"' not in opponent_block, "StateView sends an opponent's library"
+    emitted = set(re.findall(r'op\.(?:add|addProperty)\(\s*"([A-Za-z_]+)"', block))
+    assert emitted, "no opponent fields found, the block moved and this check is blind"
+
+    unexpected = emitted - ALLOWED_OPPONENT_KEYS
+    assert not unexpected, (
+        f"StateView sends opponent field(s) not on the whitelist: {sorted(unexpected)}. "
+        "Add them to ALLOWED_OPPONENT_KEYS only if a player may really see them."
+    )
+
+
+def test_no_opponent_zone_a_player_cannot_see_is_read_at_all() -> None:
+    """Belt and braces, on the zone rather than the field name.
+
+    A leak needs both a hidden zone and a key to put it under. This catches the
+    first half however the second is spelled.
+    """
+    source = (JAVA / "StateView.java").read_text()
+    start = source.index("JsonArray opps")
+    block = source[start : source.index('o.add("opponents"')]
+
+    for hidden in ("ZoneType.Hand", "ZoneType.Library"):
+        # A size() call is a count, which is public. Anything else reads cards.
+        for match in re.finditer(re.escape(hidden), block):
+            tail = block[match.end() : match.end() + 40]
+            assert ".size()" in tail, (
+                f"{hidden} is read in the opponent block without being reduced "
+                f"to a count: ...{tail.strip()[:40]}"
+            )
+
+
+def test_your_own_library_order_is_never_sent() -> None:
+    """Hidden from you as well, or a seat plays around its own next draw."""
+    source = (JAVA / "StateView.java").read_text()
+    start = source.index("JsonObject you = new JsonObject()")
+    me_block = source[start : source.index('o.add("me"')]
+
+    assert 'you.addProperty("library"' in me_block
+    assert 'you.add("library"' not in me_block
 
 
 # ----------------------------------- 5. the protocol is versioned on both sides

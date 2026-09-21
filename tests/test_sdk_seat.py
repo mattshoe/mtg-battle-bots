@@ -296,10 +296,15 @@ def test_repeated_unusable_replies_end_the_seat_whatever_they_say(monkeypatch) -
     produce a usable answer several times running is finished regardless."""
     from gauntlet.sdk_seat import MAX_CONSECUTIVE_FAILURES
 
-    seat = _Scripted(["mumble"] * (MAX_CONSECUTIVE_FAILURES + 1))
+    # Pinned, not derived. Deriving the loop count from the constant made this
+    # pass at any value, including one that burns a thousand calls on a session
+    # that died on the first.
+    assert MAX_CONSECUTIVE_FAILURES == 3
+
+    seat = _Scripted(["mumble"] * 4)
     _patch_ask(monkeypatch, seat)
 
-    for _ in range(MAX_CONSECUTIVE_FAILURES - 1):
+    for _ in range(2):
         with pytest.raises(SeatTimeout):
             seat.decide(_request(), timeout=5)
 

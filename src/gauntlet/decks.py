@@ -430,7 +430,10 @@ def to_dck(deck: DeckList) -> str:
     lines = ["[metadata]", f"Name={deck.name}", "[Commander]"]
     lines += [f"1 {c}" for c in deck.commanders]
     lines.append("[Main]")
-    lines += [f"{qty} {card}" for qty, card in deck.main]
+    # Sorted, so two exports of the same deck are byte-identical and a deck
+    # written out and read back comes back in the same order. from_dck sorts
+    # the same way, and the two used to disagree.
+    lines += [f"{qty} {card}" for qty, card in _sorted_main(tuple(deck.main))]
     return "\n".join(lines) + "\n"
 
 
@@ -545,7 +548,9 @@ def from_dck(path: Path) -> DeckList:
         qty, _, rest = line.partition(" ")
         if not qty.isdigit() or not rest.strip():
             continue
-        card = rest.split("|", 1)[0].strip()
+        # Set codes pin a printing, and one Forge spells differently is a deck
+        # that will not load. to_dck drops them too, so a round trip is stable.
+        card = _PRINTING.sub("", rest.split("|", 1)[0]).strip()
         if section == "commander":
             commanders.extend([card] * int(qty))
         else:
@@ -554,6 +559,8 @@ def from_dck(path: Path) -> DeckList:
     return DeckList(
         name=name,
         commanders=tuple(commanders),
-        main=tuple(sorted(main, key=lambda x: x[1])),
+        # The same ordering to_dck uses, so writing a deck and reading it
+        # back gives the deck you started with.
+        main=_sorted_main(tuple(main)),
         source=f"dck:{path}",
     )

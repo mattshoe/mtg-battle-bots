@@ -143,6 +143,8 @@ def run_pairing(
         result = matchmod.run(planned, transcript=transcript, budget=budget)
     except Exception as exc:
         pairing.error = f"{type(exc).__name__}: {exc}"
+        # A pairing that never played is not a 0-0-0 result, it is no result.
+        pairing.exhausted = True
         return pairing
 
     pairing.match_id = result.match_id
@@ -159,6 +161,8 @@ def run_pairing(
             pairing.losses += 1
     if result.error:
         pairing.error = result.error
+    if result.crashed:
+        pairing.exhausted = True
     if getattr(result, "exhausted", None):
         pairing.exhausted = True
     pairing.decisions = result.decisions

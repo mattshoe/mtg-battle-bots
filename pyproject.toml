@@ -40,6 +40,12 @@ testpaths = ["tests"]
 # No test here should take a second. One that hangs is a bug in the test or in
 # the thing it is testing, and either way it must fail rather than block CI.
 timeout = 60
+# A thread dying is how this system fails: the bridge loop stops, Forge
+# latches its connection broken, and the rest of the run is Forge's. pytest
+# reports that as a warning by default, which is how it went unnoticed.
+filterwarnings = [
+    "error::pytest.PytestUnhandledThreadExceptionWarning",
+]
 markers = [
     "slow: takes more than a moment, excluded from the default run",
     "forge: needs a real Forge install, skipped when absent",

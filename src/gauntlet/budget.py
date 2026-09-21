@@ -159,10 +159,6 @@ class Budget:
         """
         return self.spent_usd + self.in_flight * self.per_decision_usd
 
-    @property
-    def remaining_usd(self) -> float:
-        return max(0.0, self.max_usd - self.spent_usd)
-
     def check(self) -> None:
         """Raise if the next decision would be over the line.
 

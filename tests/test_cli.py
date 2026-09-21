@@ -248,9 +248,28 @@ def test_export_warns_about_an_illegal_deck_without_refusing(_isolated, tmp_path
 # ---------------------------------------------------------------- transcripts
 
 
-def test_matches_on_an_empty_database_says_nothing_rather_than_crashing(_isolated) -> None:
-    result = runner.invoke(app, ["matches"])
-    assert result.exit_code == 0
+def test_matches_lists_what_is_there_and_nothing_when_there_is_not(_isolated) -> None:
+    """Asserting only the exit code would pass on garbage output."""
+    from gauntlet.transcript import Transcript
+
+    empty = runner.invoke(app, ["matches"])
+    assert empty.exit_code == 0
+    assert not empty.output.strip()
+
+    t = Transcript()
+    t.start_match(
+        match_id="listed-match",
+        format="Commander",
+        seed=5,
+        seats=[{"seat": "A", "controller": "forge"}],
+    )
+    t.finish_match(match_id="listed-match")
+    t.close()
+
+    listed = runner.invoke(app, ["matches"])
+    assert listed.exit_code == 0
+    assert "listed-match" in listed.output
+    assert "finished" in listed.output
 
 
 def test_replay_of_an_unknown_match_does_not_crash(_isolated) -> None:
@@ -276,13 +295,19 @@ def test_acting_on_a_match_that_is_not_running_fails_clearly(_isolated) -> None:
 
 
 def test_status_of_a_dead_match_fails_clearly(_isolated) -> None:
+    """Clearly, which the previous version did not check at all. It would have
+    passed on a bare traceback."""
     result = runner.invoke(app, ["status", "--match", "ghost"])
     assert result.exit_code != 0
+    assert "ghost" in result.output
+    assert "Traceback" not in result.output
 
 
 def test_stopping_a_dead_match_fails_clearly(_isolated) -> None:
     result = runner.invoke(app, ["stop", "--match", "ghost"])
     assert result.exit_code != 0
+    assert "ghost" in result.output
+    assert "Traceback" not in result.output
 
 
 # -------------------------------------------------------------------- doctor

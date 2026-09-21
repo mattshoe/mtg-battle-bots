@@ -529,3 +529,98 @@ def test_card_text_is_shown_again_in_a_new_game(tmp_path) -> None:
             )
     finally:
         server.shutdown()
+
+
+def test_re_asking_the_same_question_repeats_its_rules_text(tmp_path) -> None:
+    """The documented recovery path, and what a stale reply tells an agent to do.
+
+    Dropping the same-id branch survived, and an agent that re-read the open
+    question got a board of slugs with no text at all.
+    """
+    import json
+    import socket
+
+    from gauntlet.seats import InteractiveSeat
+    from gauntlet.server import MatchServer, call_match
+    from gauntlet.transcript import Transcript
+
+    wire = json.dumps(
+        {
+            "v": 1,
+            "id": 1,
+            "seat": "A",
+            "kind": "cast_or_pass",
+            "prompt": "priority",
+            "options": [{"i": 0, "label": "Pass priority"}],
+            "state": {"turn": 1, "me": {"hand": ["cultivate"]}},
+            "new_cards": {"cultivate": {"name": "Cultivate", "text": "Search."}},
+        }
+    )
+
+    server = MatchServer(
+        match_id="reask",
+        seats={"A": InteractiveSeat()},
+        transcript=Transcript(tmp_path / "t.db"),
+        decision_timeout=3.0,
+    )
+    endpoint, _ = server.bind()
+    server.start()
+    host, port = endpoint.split(":")
+    try:
+        with socket.create_connection((host, int(port)), timeout=5) as sock:
+            sock.sendall(wire.encode() + b"\n")
+            first = call_match("reask", {"op": "act", "seat": "A", "timeout": 3})
+            second = call_match("reask", {"op": "act", "seat": "A", "timeout": 3})
+
+        assert first["request"]["new_cards"] == second["request"]["new_cards"]
+        assert "cultivate" in second["request"]["new_cards"], (
+            "re-reading the open question lost its rules text"
+        )
+    finally:
+        server.shutdown()
+
+
+def test_an_options_card_is_named_even_when_it_is_in_no_visible_zone(tmp_path) -> None:
+    """A card can be playable from a zone the state block does not list, and its
+    name belongs in the list the seat is choosing from."""
+    import json
+    import socket
+
+    from gauntlet.seats import InteractiveSeat
+    from gauntlet.server import MatchServer, call_match
+    from gauntlet.transcript import Transcript
+
+    wire = json.dumps(
+        {
+            "v": 1,
+            "id": 1,
+            "seat": "A",
+            "kind": "cast_or_pass",
+            "prompt": "priority",
+            "options": [
+                {"i": 0, "label": "Pass priority"},
+                {"i": 1, "label": "Cast from exile", "card": "wheel-of-fate"},
+            ],
+            "state": {"turn": 1, "me": {"hand": [], "battlefield": []}},
+            "new_cards": {"wheel-of-fate": {"name": "Wheel of Fate", "text": "Draw seven."}},
+        }
+    )
+
+    server = MatchServer(
+        match_id="exiled",
+        seats={"A": InteractiveSeat()},
+        transcript=Transcript(tmp_path / "t.db"),
+        decision_timeout=3.0,
+    )
+    endpoint, _ = server.bind()
+    server.start()
+    host, port = endpoint.split(":")
+    try:
+        with socket.create_connection((host, int(port)), timeout=5) as sock:
+            sock.sendall(wire.encode() + b"\n")
+            shown = call_match("exiled", {"op": "act", "seat": "A", "timeout": 3})
+
+        assert "wheel-of-fate" in shown["request"]["cards"]
+        assert shown["request"]["cards"]["wheel-of-fate"]["name"] == "Wheel of Fate"
+    finally:
+        server.shutdown()
