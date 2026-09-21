@@ -360,8 +360,11 @@ def test_run_detached_waits_for_the_match_to_answer(_isolated, tmp_path, monkeyp
             # caller is told the match is up.
             def create_socket() -> None:
                 time.sleep(0.2)
-                paths.match_socket(planned.match_id).write_text("")
+                # Flagged before the file exists. run_detached returns as soon
+                # as it sees the socket, so setting this afterwards left a
+                # window where the assertion below raced the daemon.
                 started.set()
+                paths.match_socket(planned.match_id).write_text("")
 
             threading.Thread(target=create_socket, daemon=True).start()
 
