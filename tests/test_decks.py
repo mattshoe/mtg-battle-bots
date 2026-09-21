@@ -436,3 +436,51 @@ def test_validate_allows_duplicates_the_card_itself_permits():
 def test_missing_database_raises(tmp_path):
     with pytest.raises(DeckError, match="not found"):
         list_collection_decks(db_dir=tmp_path)
+
+
+# ---------------------------------------------------- against the fixture
+
+# These run everywhere. The equivalents above assert facts about the
+# developer's real decks and skip without them, so the name-shape handling they
+# cover was never exercised in CI. The fixture is built to the same shape the
+# real importer produces, doubled commander rows included.
+
+
+def test_fixture_collapses_a_doubled_commander_row() -> None:
+    """The importer writes `X // X` for an art-series or reversible printing.
+
+    They are ordinary one-faced cards, so the doubled name matches nothing in
+    Forge and the deck will not load.
+    """
+    assert from_collection("doubled-face").commanders == ("Breya, Etherium Shaper",)
+
+
+def test_fixture_keeps_a_single_card_whose_name_contains_and() -> None:
+    """Splitting on the word invents two commanders that do not exist."""
+    assert from_collection("word-and").commanders == ("Gisa and Geralf",)
+
+
+def test_fixture_keeps_both_halves_of_a_split_card() -> None:
+    """Forge spells split cards with both halves and everything else with the
+    front face only, so this is the case that must not be trimmed."""
+    names = [name for _, name in from_collection("split-halves").main]
+    assert "Dusk // Dawn" in names
+
+
+def test_fixture_uses_the_front_face_of_a_modal_card() -> None:
+    names = [name for _, name in from_collection("split-halves").main]
+    assert "Agadeem's Awakening" in names
+    assert not any(" // " in n for n in names if n.startswith("Agadeem"))
+
+
+def test_fixture_commander_is_not_repeated_in_main() -> None:
+    """Forge rejects a deck listing its commander twice."""
+    deck = from_collection("hawk-swarm")
+    assert deck.commanders == ("Jetmir, Nexus of Revels",)
+    assert not any(name in deck.commanders for _, name in deck.main)
+
+
+def test_fixture_deck_listing_works_without_a_real_collection() -> None:
+    rows = list_collection_decks()
+    assert {r.slug for r in rows} >= {"hawk-swarm", "doubled-face", "word-and"}
+    assert all(r.owner == "tester" for r in rows)
