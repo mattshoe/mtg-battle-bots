@@ -297,13 +297,25 @@ def test_worker_count_drops_when_seats_cost_money() -> None:
     Asserted as a strict drop rather than a range, because the previous version
     passed for a function returning any constant.
     """
-    free = sweepmod.default_workers(0)
-    one_paid = sweepmod.default_workers(1)
-    two_paid = sweepmod.default_workers(2)
+    from unittest.mock import patch
 
-    assert free > two_paid, "paid seats must reduce concurrency, not merely cap it"
-    assert one_paid >= two_paid, "two paid seats per pairing is twice the sessions"
-    assert two_paid >= 1, "a sweep with agents must still make progress"
+    # Asserted across machine sizes rather than on this one. A four-core runner
+    # clamps free and paid to the same floor, so a strict drop is only true
+    # where there are cores to drop from, and asserting it unconditionally
+    # failed in CI while passing on a laptop.
+    for cores in (2, 4, 8, 16, 32):
+        with patch("os.cpu_count", lambda c=cores: c):
+            free = sweepmod.default_workers(0)
+            one_paid = sweepmod.default_workers(1)
+            two_paid = sweepmod.default_workers(2)
+
+            assert free >= one_paid >= two_paid >= 1, (
+                f"at {cores} cores: free={free} one={one_paid} two={two_paid}"
+            )
+
+    # Where there is room to differ, paid seats must actually get fewer.
+    with patch("os.cpu_count", lambda: 32):
+        assert sweepmod.default_workers(0) > sweepmod.default_workers(2)
 
 
 def test_the_table_warns_when_a_seat_ran_out_mid_sweep() -> None:

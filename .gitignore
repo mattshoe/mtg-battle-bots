@@ -14,5 +14,9 @@ __pycache__/
 # Transcripts and live match state live under XDG paths, but a stray run with
 # an overridden home would land them here.
 *.db
+# The committed collection fixture is the exception. Without it the suite
+# reads whatever collection the developer happens to have, and the paths CI
+# cannot reach go untested.
+!tests/fixtures/*.db
 *.sock
 reports/*/data/sweep-progress.log
