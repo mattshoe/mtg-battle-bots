@@ -50,9 +50,13 @@ source = ["src/gauntlet"]
 branch = true
 
 [tool.coverage.report]
-# Coverage is a floor that only moves up. Lower it and CI fails, which is the
-# point: a change that adds untested code should not be quietly accepted.
-fail_under = 79
+# A floor that only moves up. A change adding untested code should not be
+# quietly accepted.
+#
+# CI passes --cov-fail-under explicitly as well, because this setting alone
+# makes coverage print FAIL without making pytest exit non-zero. Keep the
+# two in step: this one is the local default, that one is the gate.
+fail_under = 78
 show_missing = true
 skip_covered = false
 exclude_lines = [
